@@ -1,506 +1,76 @@
-import {
-  ActivityMode,
-  AuthorityType,
-  BerthType,
-  BillingEligibility,
-  Currency,
-  GeneralTariffDomain,
-  OperatorProfile,
-  PrismaClient,
-  ServiceCode,
-  ShipType,
-  ShippingCategory,
-  TariffUnitType,
-  UserRole,
-  VerificationStatus,
-} from '@prisma/client';
-import * as bcrypt from 'bcryptjs';
+import { PrismaClient } from '@prisma/client';
+import { seedMasters } from './seeds/01-masters';
+import { seedTariffsAndRoutes } from './seeds/02-tariffs-routes';
+import { seedAssetsAndMaintenance } from './seeds/03-assets-maintenance';
+import { seedGateTicketing } from './seeds/04-gate-ticketing';
+import { seedVessels } from './seeds/05-vessels';
+import { seedOperationsVisits } from './seeds/06-operations-visits';
+import { seedCargoEquipmentUtilities } from './seeds/07-cargo-equipment-utilities';
+import { seedAdjustmentsReportsComplaints } from './seeds/08-adjustments-reports-complaints';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  const effectiveFrom = new Date('2023-01-01T00:00:00.000Z');
-  const legalBasis = 'Perda Kab. Mimika No. 4 Tahun 2023 Lampiran XI Hal. 80-81';
+  console.log('================================================================');
+  console.log('  PORTA - Pelabuhan Poumako Enterprise Database Seeder');
+  console.log('  Perda Kab. Mimika No. 4/2023 & Perbup Mimika No. 25/2024');
+  console.log('================================================================');
 
-  // 1. Seed Port Poumako
-  const pomako = await prisma.port.upsert({
-    where: { code: 'PMK' },
-    update: {},
-    create: {
-      code: 'PMK',
-      name: 'Pelabuhan Poumako',
-      location: 'Kabupaten Mimika, Papua Tengah',
-    },
-  });
+  // Step 1: Master Data (Ports, Berths, Shipping Operators, RBAC Users, Legal Documents)
+  const { pomako, operatorMap, userMap } = await seedMasters(prisma);
+  const portId = pomako.id;
 
-  // 2. Seed Berths (Pemda vs UPP Kemenhub for Pasal 79 enforcement)
-  await prisma.berth.upsert({
-    where: { portId_code: { portId: pomako.id, code: 'DRM-PEMDA-01' } },
-    update: {},
-    create: {
-      portId: pomako.id,
-      code: 'DRM-PEMDA-01',
-      name: 'Dermaga Beton Pemda Poumako',
-      berthType: BerthType.DERMAGA_BESI_BETON_KAYU,
-      authorityType: AuthorityType.PEMDA_DISHUB,
-      billingEligibility: BillingEligibility.BILLABLE,
-      legalBasis: 'Perda Kab. Mimika No. 4 Tahun 2023 Lampiran XI',
-      maxLengthMeters: 120,
-    },
-  });
+  const adminUserId = userMap.get('admin.pomako@porta.mimikakab.go.id')!;
+  const petugasUserId = userMap.get('petugas.pomako@porta.mimikakab.go.id')!;
+  const bendaharaUserId = userMap.get('bendahara.pomako@porta.mimikakab.go.id')!;
+  const kadishubUserId = userMap.get('dishub@porta.mimikakab.go.id')!;
 
-  await prisma.berth.upsert({
-    where: { portId_code: { portId: pomako.id, code: 'TLD-PEMDA-01' } },
-    update: {},
-    create: {
-      portId: pomako.id,
-      code: 'TLD-PEMDA-01',
-      name: 'Tambatan Talud Pemda',
-      berthType: BerthType.PINGGIRAN_TALUD,
-      authorityType: AuthorityType.PEMDA_DISHUB,
-      billingEligibility: BillingEligibility.BILLABLE,
-      legalBasis: 'Perda Kab. Mimika No. 4 Tahun 2023 Lampiran XI',
-      maxLengthMeters: 60,
-    },
-  });
+  // Step 2: Tariffs Matrix & Perda Ferry Routes
+  await seedTariffsAndRoutes(prisma, portId);
 
-  await prisma.berth.upsert({
-    where: { portId_code: { portId: pomako.id, code: 'DRM-UPP-01' } },
-    update: {},
-    create: {
-      portId: pomako.id,
-      code: 'DRM-UPP-01',
-      name: 'Dermaga UPP Kemenhub (Non-Retribusi Pemda)',
-      berthType: BerthType.DERMAGA_BESI_BETON_KAYU,
-      authorityType: AuthorityType.UPP_KEMENHUB,
-      billingEligibility: BillingEligibility.NOT_BILLABLE,
-      maxLengthMeters: 150,
-    },
-  });
+  // Step 3: Port Assets (PKS Leases, Multi-Year Rental, Maintenance Tickets)
+  await seedAssetsAndMaintenance(prisma, portId, adminUserId, bendaharaUserId);
 
-  // 3. Seed Sample Operator & Vessel (Idempotent lookup by NPWP/email)
-  let operator = await prisma.shipOperator.findFirst({
-    where: { email: 'ops@mimika-shipping.co.id' },
-  });
-  if (!operator) {
-    operator = await prisma.shipOperator.create({
-      data: {
-        name: 'PT Pelayaran Mimika Sejahtera',
-        npwp: '01.234.567.8-954.000',
-        phone: '081234567890',
-        email: 'ops@mimika-shipping.co.id',
-        operatorProfile: OperatorProfile.REGULAR_SCHEDULED,
-        verificationStatus: VerificationStatus.VERIFIED,
-        verifiedAt: new Date(),
-      },
-    });
-  }
+  // Step 4: Gate Ticketing (Porporasi, Ticket Books & Zero Discrepancy Shift Handovers)
+  await seedGateTicketing(prisma, portId);
 
-  await prisma.vessel.upsert({
-    where: { registrationNumber: 'REG-PMK-001' },
-    update: {},
-    create: {
-      operatorId: operator.id,
-      registrationNumber: 'REG-PMK-001',
-      name: 'KM Poumako Jaya',
-      flag: 'Indonesia',
-      grossTonnage: 500,
-      shipType: ShipType.NIAGA,
-      shippingCategory: ShippingCategory.DALAM_NEGERI,
-      verificationStatus: VerificationStatus.VERIFIED,
-      verifiedAt: new Date(),
-    },
-  });
+  // Step 5: Realistic Maritime Fleet (Vessels with IMO, GT, Certificates)
+  const { vesselMap } = await seedVessels(prisma, operatorMap, adminUserId);
 
-  // 4. Seed Users for all RBAC roles
-  const passwordHash = await bcrypt.hash('Porta123!', 10);
-  const usersData = [
-    {
-      email: 'superadmin@porta.mimikakab.go.id',
-      fullName: 'Superadmin PORTA',
-      role: UserRole.SUPERADMIN,
-      portId: null,
-      operatorId: null,
-    },
-    {
-      email: 'admin.pomako@porta.mimikakab.go.id',
-      fullName: 'Admin Pelabuhan Poumako',
-      role: UserRole.ADMIN_PELABUHAN,
-      portId: pomako.id,
-      operatorId: null,
-    },
-    {
-      email: 'petugas.pomako@porta.mimikakab.go.id',
-      fullName: 'Petugas Dermaga Poumako',
-      role: UserRole.PETUGAS_DERMAGA,
-      portId: pomako.id,
-      operatorId: null,
-    },
-    {
-      email: 'bendahara.pomako@porta.mimikakab.go.id',
-      fullName: 'Bendahara Penerimaan Poumako',
-      role: UserRole.BENDAHARA,
-      portId: pomako.id,
-      operatorId: null,
-    },
-    {
-      email: 'dishub@porta.mimikakab.go.id',
-      fullName: 'Kepala Dinas Perhubungan Mimika',
-      role: UserRole.DISHUB_EKSEKUTIF,
-      portId: null,
-      operatorId: null,
-    },
-    {
-      email: 'operator@mimika-shipping.co.id',
-      fullName: 'Agen PT Pelayaran Mimika Sejahtera',
-      role: UserRole.OPERATOR_KAPAL,
-      portId: null,
-      operatorId: operator.id,
-    },
-  ];
+  // Step 6: Port Operations & Financial Realization (Visits, Berthings, SKRD/Karcis, SSRD, Warnings, Manifests)
+  await seedOperationsVisits(
+    prisma,
+    portId,
+    vesselMap,
+    adminUserId,
+    petugasUserId,
+    bendaharaUserId,
+  );
 
-  for (const u of usersData) {
-    await prisma.user.upsert({
-      where: { email: u.email },
-      update: {},
-      create: { ...u, passwordHash },
-    });
-  }
+  // Step 7: Cargo Handling, Port Equipment Rentals & Clean Water Meter Utilities
+  await seedCargoEquipmentUtilities(prisma, portId, adminUserId, petugasUserId);
 
-  // 5. Seed Perda Mimika No. 4 Tahun 2023 Lampiran XI (Bagian A: Jasa Pelayanan Kapal)
-  const tariffs = [
-    // 1.a Jasa Labuh - Kapal Niaga
-    {
-      tariffCode: 'LABUH_NIAGA_LN',
-      serviceCode: ServiceCode.JASA_LABUH,
-      shippingCategory: ShippingCategory.LUAR_NEGERI,
-      shipType: ShipType.NIAGA,
-      activityMode: ActivityMode.NORMAL,
-      unitType: TariffUnitType.GT_PER_15_DAYS,
-      currency: Currency.IDR,
-      amount: 594,
-    },
-    {
-      tariffCode: 'LABUH_NIAGA_DN',
-      serviceCode: ServiceCode.JASA_LABUH,
-      shippingCategory: ShippingCategory.DALAM_NEGERI,
-      shipType: ShipType.NIAGA,
-      activityMode: ActivityMode.NORMAL,
-      unitType: TariffUnitType.GT_PER_15_DAYS,
-      currency: Currency.IDR,
-      amount: 50,
-    },
-    {
-      tariffCode: 'LABUH_NIAGA_PELRA',
-      serviceCode: ServiceCode.JASA_LABUH,
-      shippingCategory: ShippingCategory.PELRA_PERINTIS,
-      shipType: ShipType.NIAGA,
-      activityMode: ActivityMode.NORMAL,
-      unitType: TariffUnitType.GT_PER_15_DAYS,
-      currency: Currency.IDR,
-      amount: 25,
-    },
-    {
-      tariffCode: 'LABUH_TETAP_DN',
-      serviceCode: ServiceCode.JASA_LABUH,
-      shippingCategory: ShippingCategory.DALAM_NEGERI,
-      shipType: ShipType.NIAGA,
-      activityMode: ActivityMode.FIXED_ACTIVITY,
-      unitType: TariffUnitType.GT_PER_MONTH,
-      currency: Currency.IDR,
-      amount: 400,
-    },
-    {
-      tariffCode: 'LABUH_TETAP_PELRA',
-      serviceCode: ServiceCode.JASA_LABUH,
-      shippingCategory: ShippingCategory.PELRA_PERINTIS,
-      shipType: ShipType.NIAGA,
-      activityMode: ActivityMode.FIXED_ACTIVITY,
-      unitType: TariffUnitType.GT_PER_MONTH,
-      currency: Currency.IDR,
-      amount: 50,
-    },
-    // 1.b Jasa Labuh - Kapal Non Niaga
-    {
-      tariffCode: 'LABUH_NON_NIAGA_LN',
-      serviceCode: ServiceCode.JASA_LABUH,
-      shippingCategory: ShippingCategory.LUAR_NEGERI,
-      shipType: ShipType.NON_NIAGA,
-      activityMode: ActivityMode.NORMAL,
-      unitType: TariffUnitType.GT_PER_15_DAYS,
-      currency: Currency.IDR,
-      amount: 304,
-    },
-    {
-      tariffCode: 'LABUH_NON_NIAGA_DN',
-      serviceCode: ServiceCode.JASA_LABUH,
-      shippingCategory: ShippingCategory.DALAM_NEGERI,
-      shipType: ShipType.NON_NIAGA,
-      activityMode: ActivityMode.NORMAL,
-      unitType: TariffUnitType.GT_PER_15_DAYS,
-      currency: Currency.IDR,
-      amount: 25,
-    },
-    {
-      tariffCode: 'LABUH_NON_NIAGA_PELRA',
-      serviceCode: ServiceCode.JASA_LABUH,
-      shippingCategory: ShippingCategory.PELRA_PERINTIS,
-      shipType: ShipType.NON_NIAGA,
-      activityMode: ActivityMode.NORMAL,
-      unitType: TariffUnitType.GT_PER_15_DAYS,
-      currency: Currency.IDR,
-      amount: 15,
-    },
-    // 2. Kegiatan di TUKS & Terminal Khusus
-    {
-      tariffCode: 'TUKS_LN',
-      serviceCode: ServiceCode.KEGIATAN_TUKS_TERSUS,
-      shippingCategory: ShippingCategory.LUAR_NEGERI,
-      unitType: TariffUnitType.GT_PER_15_DAYS,
-      currency: Currency.IDR,
-      amount: 594,
-    },
-    {
-      tariffCode: 'TUKS_DN',
-      serviceCode: ServiceCode.KEGIATAN_TUKS_TERSUS,
-      shippingCategory: ShippingCategory.DALAM_NEGERI,
-      unitType: TariffUnitType.GT_PER_15_DAYS,
-      currency: Currency.IDR,
-      amount: 50,
-    },
-    // 3. Jasa Tambat (Khusus & Kepentingan Sendiri)
-    {
-      tariffCode: 'TAMBAT_KHUSUS_DERMAGA_LN',
-      serviceCode: ServiceCode.JASA_TAMBAT_KHUSUS,
-      shippingCategory: ShippingCategory.LUAR_NEGERI,
-      berthType: BerthType.DERMAGA_BESI_BETON_KAYU,
-      unitType: TariffUnitType.GT_PER_ETMAL,
-      currency: Currency.IDR,
-      amount: 594,
-    },
-    {
-      tariffCode: 'TAMBAT_KHUSUS_DERMAGA_DN',
-      serviceCode: ServiceCode.JASA_TAMBAT_KHUSUS,
-      shippingCategory: ShippingCategory.DALAM_NEGERI,
-      berthType: BerthType.DERMAGA_BESI_BETON_KAYU,
-      unitType: TariffUnitType.GT_PER_ETMAL,
-      currency: Currency.IDR,
-      amount: 38,
-    },
-    {
-      tariffCode: 'TAMBAT_KHUSUS_DERMAGA_PELRA',
-      serviceCode: ServiceCode.JASA_TAMBAT_KHUSUS,
-      shippingCategory: ShippingCategory.PELRA_PERINTIS,
-      berthType: BerthType.DERMAGA_BESI_BETON_KAYU,
-      unitType: TariffUnitType.GT_PER_ETMAL,
-      currency: Currency.IDR,
-      amount: 10,
-    },
-    {
-      tariffCode: 'TAMBAT_KHUSUS_DOLPHIN_LN',
-      serviceCode: ServiceCode.JASA_TAMBAT_KHUSUS,
-      shippingCategory: ShippingCategory.LUAR_NEGERI,
-      berthType: BerthType.BRESSING_DOLPHIN_PELAMPUNG,
-      unitType: TariffUnitType.GT_PER_ETMAL,
-      currency: Currency.IDR,
-      amount: 330,
-    },
-    {
-      tariffCode: 'TAMBAT_KHUSUS_DOLPHIN_DN',
-      serviceCode: ServiceCode.JASA_TAMBAT_KHUSUS,
-      shippingCategory: ShippingCategory.DALAM_NEGERI,
-      berthType: BerthType.BRESSING_DOLPHIN_PELAMPUNG,
-      unitType: TariffUnitType.GT_PER_ETMAL,
-      currency: Currency.IDR,
-      amount: 6,
-    },
-    {
-      tariffCode: 'TAMBAT_KHUSUS_DOLPHIN_PELRA',
-      serviceCode: ServiceCode.JASA_TAMBAT_KHUSUS,
-      shippingCategory: ShippingCategory.PELRA_PERINTIS,
-      berthType: BerthType.BRESSING_DOLPHIN_PELAMPUNG,
-      unitType: TariffUnitType.GT_PER_ETMAL,
-      currency: Currency.IDR,
-      amount: 0,
-    },
-    // 4. Jasa Tambat (Umum)
-    {
-      tariffCode: 'TAMBAT_UMUM_DERMAGA_LN',
-      serviceCode: ServiceCode.JASA_TAMBAT_UMUM,
-      shippingCategory: ShippingCategory.LUAR_NEGERI,
-      berthType: BerthType.DERMAGA_BESI_BETON_KAYU,
-      unitType: TariffUnitType.GT_PER_ETMAL,
-      currency: Currency.IDR,
-      amount: 594,
-    },
-    {
-      tariffCode: 'TAMBAT_UMUM_DERMAGA_DN',
-      serviceCode: ServiceCode.JASA_TAMBAT_UMUM,
-      shippingCategory: ShippingCategory.DALAM_NEGERI,
-      berthType: BerthType.DERMAGA_BESI_BETON_KAYU,
-      unitType: TariffUnitType.GT_PER_ETMAL,
-      currency: Currency.IDR,
-      amount: 38,
-    },
-    {
-      tariffCode: 'TAMBAT_UMUM_DERMAGA_PELRA',
-      serviceCode: ServiceCode.JASA_TAMBAT_UMUM,
-      shippingCategory: ShippingCategory.PELRA_PERINTIS,
-      berthType: BerthType.DERMAGA_BESI_BETON_KAYU,
-      unitType: TariffUnitType.GT_PER_ETMAL,
-      currency: Currency.IDR,
-      amount: 19,
-    },
-    {
-      tariffCode: 'TAMBAT_UMUM_DOLPHIN_LN',
-      serviceCode: ServiceCode.JASA_TAMBAT_UMUM,
-      shippingCategory: ShippingCategory.LUAR_NEGERI,
-      berthType: BerthType.BRESSING_DOLPHIN_PELAMPUNG,
-      unitType: TariffUnitType.GT_PER_ETMAL,
-      currency: Currency.IDR,
-      amount: 304,
-    },
-    {
-      tariffCode: 'TAMBAT_UMUM_DOLPHIN_DN',
-      serviceCode: ServiceCode.JASA_TAMBAT_UMUM,
-      shippingCategory: ShippingCategory.DALAM_NEGERI,
-      berthType: BerthType.BRESSING_DOLPHIN_PELAMPUNG,
-      unitType: TariffUnitType.GT_PER_ETMAL,
-      currency: Currency.IDR,
-      amount: 25,
-    },
-    {
-      tariffCode: 'TAMBAT_UMUM_DOLPHIN_PELRA',
-      serviceCode: ServiceCode.JASA_TAMBAT_UMUM,
-      shippingCategory: ShippingCategory.PELRA_PERINTIS,
-      berthType: BerthType.BRESSING_DOLPHIN_PELAMPUNG,
-      unitType: TariffUnitType.GT_PER_ETMAL,
-      currency: Currency.IDR,
-      amount: 15,
-    },
-    {
-      tariffCode: 'TAMBAT_UMUM_TALUD_LN',
-      serviceCode: ServiceCode.JASA_TAMBAT_UMUM,
-      shippingCategory: ShippingCategory.LUAR_NEGERI,
-      berthType: BerthType.PINGGIRAN_TALUD,
-      unitType: TariffUnitType.GT_PER_ETMAL,
-      currency: Currency.USD,
-      amount: 0.063,
-    },
-    {
-      tariffCode: 'TAMBAT_UMUM_TALUD_DN',
-      serviceCode: ServiceCode.JASA_TAMBAT_UMUM,
-      shippingCategory: ShippingCategory.DALAM_NEGERI,
-      berthType: BerthType.PINGGIRAN_TALUD,
-      unitType: TariffUnitType.GT_PER_ETMAL,
-      currency: Currency.IDR,
-      amount: 13,
-    },
-    {
-      tariffCode: 'TAMBAT_UMUM_TALUD_PELRA',
-      serviceCode: ServiceCode.JASA_TAMBAT_UMUM,
-      shippingCategory: ShippingCategory.PELRA_PERINTIS,
-      berthType: BerthType.PINGGIRAN_TALUD,
-      unitType: TariffUnitType.GT_PER_ETMAL,
-      currency: Currency.IDR,
-      amount: 0,
-    },
-  ];
+  // Step 8: Billing Adjustments (Perbup 25/2024), Daily Shift Reports, Public Complaints, Notifications & Audit Logs
+  await seedAdjustmentsReportsComplaints(
+    prisma,
+    portId,
+    adminUserId,
+    petugasUserId,
+    kadishubUserId,
+    bendaharaUserId,
+  );
 
-  for (const t of tariffs) {
-    await prisma.portTariff.upsert({
-      where: { tariffCode: t.tariffCode },
-      update: {},
-      create: {
-        ...t,
-        legalBasis,
-        effectiveFrom,
-      },
-    });
-  }
-
-  // 6. Seed Phase 2: Gate Ticket Book (Pas Masuk / Movable Bridge) & Ferry Routes (Lampiran XI Hal. 85)
-  await prisma.gateTicketBook.upsert({
-    where: { bookCode: 'KRC-PMK-ORANG-01' },
-    update: {},
-    create: {
-      portId: pomako.id,
-      bookCode: 'KRC-PMK-ORANG-01',
-      ticketCategory: 'TANDA_MASUK_HARIAN_ORANG',
-      serialStart: 1,
-      serialEnd: 100,
-      nominalPerTicket: 2000,
-      legalBasis: 'Perda Kab. Mimika No. 4 Tahun 2023 Lampiran XI Hal. 83',
-    },
-  });
-
-  const ferryRoutes = [
-    { destinationName: 'Muara Pantai', distanceMiles: 12, adultFareIdr: 5100, childFareIdr: 3800, infantFareIdr: 510, cargoPerTonIdr: 4600 },
-    { destinationName: 'Otakwa', distanceMiles: 57, adultFareIdr: 9600, childFareIdr: 7200, infantFareIdr: 960, cargoPerTonIdr: 8600 },
-    { destinationName: 'Atura', distanceMiles: 30, adultFareIdr: 6200, childFareIdr: 4700, infantFareIdr: 620, cargoPerTonIdr: 5600 },
-    { destinationName: 'Jita', distanceMiles: 79, adultFareIdr: 12200, childFareIdr: 9200, infantFareIdr: 1220, cargoPerTonIdr: 11000 },
-    { destinationName: 'Agimuga', distanceMiles: 83, adultFareIdr: 12700, childFareIdr: 9500, infantFareIdr: 1270, cargoPerTonIdr: 11400 },
-    { destinationName: 'Kapiraya', distanceMiles: 78, adultFareIdr: 12200, childFareIdr: 9200, infantFareIdr: 1220, cargoPerTonIdr: 11000 },
-    { destinationName: 'Potowai Buru', distanceMiles: 132, adultFareIdr: 18200, childFareIdr: 13700, infantFareIdr: 1820, cargoPerTonIdr: 16400 },
-    { destinationName: 'Arar', distanceMiles: 70, adultFareIdr: 11200, childFareIdr: 8400, infantFareIdr: 1120, cargoPerTonIdr: 10100 },
-    { destinationName: 'Kokonau', distanceMiles: 32, adultFareIdr: 7000, childFareIdr: 5300, infantFareIdr: 700, cargoPerTonIdr: 6300 },
-  ];
-
-  for (const r of ferryRoutes) {
-    await prisma.ferryRoute.upsert({
-      where: { portId_destinationName: { portId: pomako.id, destinationName: r.destinationName } },
-      update: {},
-      create: {
-        portId: pomako.id,
-        ...r,
-        legalBasis: 'Perda Kab. Mimika No. 4 Tahun 2023 Lampiran XI Hal. 85',
-      },
-    });
-  }
-
-  // 7. Seed General Tariffs (Terminal Penumpang, Barang, Alat & Air Bersih) - Zero Hardcoding!
-  const generalTariffs = [
-    // Terminal Penumpang (Lampiran XI D.2)
-    { tariffCode: 'TERM_KELAS_A_DEPART', domain: GeneralTariffDomain.TERMINAL_PASSENGER, itemKey: 'KELAS_A_DEPARTURE', unitLabel: 'Orang', amountIdr: 4000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI D.2' },
-    { tariffCode: 'TERM_KELAS_A_GREETER', domain: GeneralTariffDomain.TERMINAL_PASSENGER, itemKey: 'KELAS_A_GREETER', unitLabel: 'Orang/Sekali Masuk', amountIdr: 3000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI D.2' },
-    { tariffCode: 'TERM_KELAS_B_DEPART', domain: GeneralTariffDomain.TERMINAL_PASSENGER, itemKey: 'KELAS_B_DEPARTURE', unitLabel: 'Orang', amountIdr: 3000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI D.2' },
-    { tariffCode: 'TERM_KELAS_B_GREETER', domain: GeneralTariffDomain.TERMINAL_PASSENGER, itemKey: 'KELAS_B_GREETER', unitLabel: 'Orang/Sekali Masuk', amountIdr: 3000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI D.2' },
-    { tariffCode: 'TERM_KELAS_C_DEPART', domain: GeneralTariffDomain.TERMINAL_PASSENGER, itemKey: 'KELAS_C_DEPARTURE', unitLabel: 'Orang', amountIdr: 2000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI D.2' },
-    { tariffCode: 'TERM_KELAS_C_GREETER', domain: GeneralTariffDomain.TERMINAL_PASSENGER, itemKey: 'KELAS_C_GREETER', unitLabel: 'Orang/Sekali Masuk', amountIdr: 2000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI D.2' },
-    // Barang & Penumpukan (Lampiran XI B)
-    { tariffCode: 'CRG_IMPOR_EKSPOR', domain: GeneralTariffDomain.CARGO, itemKey: 'BARANG_IMPOR_EKSPOR', unitLabel: 'Ton/m3', amountIdr: 1000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI B' },
-    { tariffCode: 'CRG_BULOG_PUPUK', domain: GeneralTariffDomain.CARGO, itemKey: 'BARANG_BULOG_PUPUK', unitLabel: 'Ton/m3', amountIdr: 400, legalBasis: 'Perda Mimika 4/2023 Lampiran XI B' },
-    { tariffCode: 'CRG_ANTAR_PULAU', domain: GeneralTariffDomain.CARGO, itemKey: 'BARANG_ANTAR_PULAU', unitLabel: 'Ton/m3', amountIdr: 600, legalBasis: 'Perda Mimika 4/2023 Lampiran XI B' },
-    { tariffCode: 'CRG_PETI_20FT_ISI', domain: GeneralTariffDomain.CARGO, itemKey: 'PETI_KEMAS_20FT_ISI', unitLabel: 'Unit/Hari', amountIdr: 6000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI B' },
-    { tariffCode: 'CRG_PETI_40FT_ISI', domain: GeneralTariffDomain.CARGO, itemKey: 'PETI_KEMAS_40FT_ISI', unitLabel: 'Unit/Hari', amountIdr: 12000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI B' },
-    { tariffCode: 'CRG_SHIP_TO_SHIP', domain: GeneralTariffDomain.CARGO, itemKey: 'SHIP_TO_SHIP', unitLabel: 'Ton/m3', amountIdr: 30, legalBasis: 'Perda Mimika 4/2023 Lampiran XI B' },
-    // Alat Pelabuhan (Lampiran XI C)
-    { tariffCode: 'EQP_FORKLIFT_1_2T', domain: GeneralTariffDomain.EQUIPMENT, itemKey: 'FORKLIFT_1_2_TON', unitLabel: 'Unit/Jam', amountIdr: 10000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI C' },
-    { tariffCode: 'EQP_FORKLIFT_3_6T', domain: GeneralTariffDomain.EQUIPMENT, itemKey: 'FORKLIFT_3_6_TON', unitLabel: 'Unit/Jam', amountIdr: 20000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI C' },
-    { tariffCode: 'EQP_CRANE_7_15T', domain: GeneralTariffDomain.EQUIPMENT, itemKey: 'CRANE_7_15_TON', unitLabel: 'Unit/Jam', amountIdr: 100000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI C' },
-    { tariffCode: 'EQP_LONGBOAT_1_60PK', domain: GeneralTariffDomain.EQUIPMENT, itemKey: 'LONGBOAT_1_60_PK', unitLabel: 'Unit/Jam', amountIdr: 35000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI C' },
-    { tariffCode: 'EQP_GEROBAK_DORONG', domain: GeneralTariffDomain.EQUIPMENT, itemKey: 'GEROBAK_DORONG', unitLabel: 'Unit/Jam', amountIdr: 1000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI C' },
-    // Utilitas Air Bersih (Lampiran XI D.1.d)
-    { tariffCode: 'UTL_AIR_BERSIH', domain: GeneralTariffDomain.UTILITY, itemKey: 'AIR_BERSIH', unitLabel: 'Liter', amountIdr: 500, legalBasis: 'Perda Mimika 4/2023 Lampiran XI D.1.d' },
-  ];
-
-  for (const gt of generalTariffs) {
-    await prisma.generalTariff.upsert({
-      where: { tariffCode: gt.tariffCode },
-      update: {},
-      create: { ...gt, effectiveFrom },
-    });
-  }
-
-  console.log('PORTA seed completed: Port Poumako, berths, RBAC users, Perda 4/2023 tariffs & ferry routes.');
+  console.log('================================================================');
+  console.log('  PORTA Database Seeder Finished Successfully!');
+  console.log('  All 16 Modules Populated with Deep, Authentic, Real-World Data.');
+  console.log('================================================================');
 }
 
 main()
   .catch((e) => {
-    console.error(e);
+    console.error('Error during PORTA seed execution:', e);
     process.exit(1);
   })
   .finally(async () => {
     await prisma.$disconnect();
   });
-
