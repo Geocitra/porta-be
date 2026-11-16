@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+/// <reference types="jest" />
 import { VisitStatus } from '@prisma/client';
 import { assertValidVisitTransition } from '../../src/modules/visits/visit-state-machine';
 

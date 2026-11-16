@@ -1,3 +1,4 @@
+/// <reference types="jest" />
 import { Currency, TariffUnitType } from '@prisma/client';
 import { TariffCalculator } from '../../src/modules/tariffs/tariff.calculator';
 
