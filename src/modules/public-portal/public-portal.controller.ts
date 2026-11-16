@@ -17,13 +17,17 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PortScopeGuard, ScopeFilter } from '../../common/guards/port-scope.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { ExchangeRateService } from '../tariffs/exchange-rate.service';
 import { CreateComplaintDto, ResolveComplaintDto } from './dto/public-portal.dto';
 import { PublicPortalService } from './public-portal.service';
 
 @ApiTags('Public Portal & Pengaduan')
 @Controller()
 export class PublicPortalController {
-  constructor(private readonly publicPortalService: PublicPortalService) {}
+  constructor(
+    private readonly publicPortalService: PublicPortalService,
+    private readonly exchangeRateService: ExchangeRateService,
+  ) {}
 
   // ==========================================================================
   // PUBLIC ENDPOINTS (No Auth Required - Landing Page & Public Tracking)
@@ -32,6 +36,11 @@ export class PublicPortalController {
   @Get('public/ports')
   getPublicPorts() {
     return this.publicPortalService.getPublicPorts();
+  }
+
+  @Get('public/exchange-rate')
+  getPublicExchangeRate() {
+    return this.exchangeRateService.getExchangeRateDetails();
   }
 
   @Get('public/tariffs')

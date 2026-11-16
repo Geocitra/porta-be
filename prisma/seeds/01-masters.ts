@@ -364,3 +364,4 @@ export async function seedMasters(prisma: PrismaClient) {
   console.log('Master data seeded successfully.');
   return { pomako, operatorMap, userMap };
 }
+

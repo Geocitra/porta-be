@@ -6,6 +6,7 @@ export interface AppConfig {
   bankWebhookSecret: string;
   etmalRoundingMode: 'ROUND_UP' | 'HALF_DAY_GRACE';
   defaultUsdToIdrRate: number;
+  exchangeRateCacheTtlMs: number;
 }
 
 export const loadAppConfig = (): AppConfig => {
@@ -31,5 +32,6 @@ export const loadAppConfig = (): AppConfig => {
     bankWebhookSecret: bankWebhookSecret || 'porta-bank-webhook-secret-2026',
     etmalRoundingMode: mode === 'HALF_DAY_GRACE' ? 'HALF_DAY_GRACE' : 'ROUND_UP',
     defaultUsdToIdrRate: Number(process.env.DEFAULT_USD_TO_IDR_RATE || 16000),
+    exchangeRateCacheTtlMs: Number(process.env.EXCHANGE_RATE_CACHE_TTL_MS || 3600000),
   };
 };

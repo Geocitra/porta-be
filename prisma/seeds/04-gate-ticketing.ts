@@ -167,3 +167,4 @@ export async function seedGateTicketing(prisma: PrismaClient, portId: number) {
   console.log('Gate Ticketing seeded successfully.');
   return { bookMap };
 }
+

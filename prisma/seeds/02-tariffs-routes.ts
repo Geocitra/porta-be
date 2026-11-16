@@ -374,3 +374,4 @@ export async function seedTariffsAndRoutes(prisma: PrismaClient, portId: number)
 
   console.log('Tariffs and Ferry Routes seeded successfully.');
 }
+

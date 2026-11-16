@@ -318,3 +318,4 @@ export async function seedCargoEquipmentUtilities(
 
   console.log('Cargo, Equipment & Utilities seeded successfully.');
 }
+

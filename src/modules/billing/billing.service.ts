@@ -30,6 +30,7 @@ import { DecimalUtil } from '../../common/utils/decimal.util';
 import { DocNumberUtil } from '../../common/utils/doc-number.util';
 import { StorageService, UploadedFilePayload } from '../../common/utils/storage.service';
 import { EtmalRoundingMode } from '../../config/billing.constants';
+import { ExchangeRateService } from '../tariffs/exchange-rate.service';
 import { TariffCalculator } from '../tariffs/tariff.calculator';
 import { TariffResolverService } from '../tariffs/tariff-resolver.service';
 import { VISIT_DEPARTED_EVENT, VisitDepartedEvent } from '../visits/visits.service';
@@ -50,6 +51,7 @@ export class BillingService {
     private readonly auditLog: AuditLogService,
     private readonly configService: ConfigService,
     private readonly storage: StorageService,
+    private readonly exchangeRateService: ExchangeRateService,
   ) {}
 
   @OnEvent(VISIT_DEPARTED_EVENT)
@@ -130,9 +132,9 @@ export class BillingService {
       );
     }
 
-    const exchangeRateUsd =
-      dto.exchangeRateUsd ??
-      this.configService.get<number>('DEFAULT_USD_TO_IDR_RATE', 16000);
+    const exchangeRateUsd = await this.exchangeRateService.getLiveUsdToIdrRate(
+      dto.exchangeRateUsd,
+    );
     const roundingMode =
       (this.configService.get<string>('ETMAL_ROUNDING_MODE') as EtmalRoundingMode) ||
       'ROUND_UP';
