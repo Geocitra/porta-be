@@ -4,6 +4,7 @@ import {
   BerthType,
   BillingEligibility,
   Currency,
+  GeneralTariffDomain,
   OperatorProfile,
   PrismaClient,
   ServiceCode,
@@ -449,6 +450,40 @@ async function main() {
         ...r,
         legalBasis: 'Perda Kab. Mimika No. 4 Tahun 2023 Lampiran XI Hal. 85',
       },
+    });
+  }
+
+  // 7. Seed General Tariffs (Terminal Penumpang, Barang, Alat & Air Bersih) - Zero Hardcoding!
+  const generalTariffs = [
+    // Terminal Penumpang (Lampiran XI D.2)
+    { tariffCode: 'TERM_KELAS_A_DEPART', domain: GeneralTariffDomain.TERMINAL_PASSENGER, itemKey: 'KELAS_A_DEPARTURE', unitLabel: 'Orang', amountIdr: 4000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI D.2' },
+    { tariffCode: 'TERM_KELAS_A_GREETER', domain: GeneralTariffDomain.TERMINAL_PASSENGER, itemKey: 'KELAS_A_GREETER', unitLabel: 'Orang/Sekali Masuk', amountIdr: 3000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI D.2' },
+    { tariffCode: 'TERM_KELAS_B_DEPART', domain: GeneralTariffDomain.TERMINAL_PASSENGER, itemKey: 'KELAS_B_DEPARTURE', unitLabel: 'Orang', amountIdr: 3000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI D.2' },
+    { tariffCode: 'TERM_KELAS_B_GREETER', domain: GeneralTariffDomain.TERMINAL_PASSENGER, itemKey: 'KELAS_B_GREETER', unitLabel: 'Orang/Sekali Masuk', amountIdr: 3000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI D.2' },
+    { tariffCode: 'TERM_KELAS_C_DEPART', domain: GeneralTariffDomain.TERMINAL_PASSENGER, itemKey: 'KELAS_C_DEPARTURE', unitLabel: 'Orang', amountIdr: 2000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI D.2' },
+    { tariffCode: 'TERM_KELAS_C_GREETER', domain: GeneralTariffDomain.TERMINAL_PASSENGER, itemKey: 'KELAS_C_GREETER', unitLabel: 'Orang/Sekali Masuk', amountIdr: 2000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI D.2' },
+    // Barang & Penumpukan (Lampiran XI B)
+    { tariffCode: 'CRG_IMPOR_EKSPOR', domain: GeneralTariffDomain.CARGO, itemKey: 'BARANG_IMPOR_EKSPOR', unitLabel: 'Ton/m3', amountIdr: 1000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI B' },
+    { tariffCode: 'CRG_BULOG_PUPUK', domain: GeneralTariffDomain.CARGO, itemKey: 'BARANG_BULOG_PUPUK', unitLabel: 'Ton/m3', amountIdr: 400, legalBasis: 'Perda Mimika 4/2023 Lampiran XI B' },
+    { tariffCode: 'CRG_ANTAR_PULAU', domain: GeneralTariffDomain.CARGO, itemKey: 'BARANG_ANTAR_PULAU', unitLabel: 'Ton/m3', amountIdr: 600, legalBasis: 'Perda Mimika 4/2023 Lampiran XI B' },
+    { tariffCode: 'CRG_PETI_20FT_ISI', domain: GeneralTariffDomain.CARGO, itemKey: 'PETI_KEMAS_20FT_ISI', unitLabel: 'Unit/Hari', amountIdr: 6000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI B' },
+    { tariffCode: 'CRG_PETI_40FT_ISI', domain: GeneralTariffDomain.CARGO, itemKey: 'PETI_KEMAS_40FT_ISI', unitLabel: 'Unit/Hari', amountIdr: 12000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI B' },
+    { tariffCode: 'CRG_SHIP_TO_SHIP', domain: GeneralTariffDomain.CARGO, itemKey: 'SHIP_TO_SHIP', unitLabel: 'Ton/m3', amountIdr: 30, legalBasis: 'Perda Mimika 4/2023 Lampiran XI B' },
+    // Alat Pelabuhan (Lampiran XI C)
+    { tariffCode: 'EQP_FORKLIFT_1_2T', domain: GeneralTariffDomain.EQUIPMENT, itemKey: 'FORKLIFT_1_2_TON', unitLabel: 'Unit/Jam', amountIdr: 10000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI C' },
+    { tariffCode: 'EQP_FORKLIFT_3_6T', domain: GeneralTariffDomain.EQUIPMENT, itemKey: 'FORKLIFT_3_6_TON', unitLabel: 'Unit/Jam', amountIdr: 20000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI C' },
+    { tariffCode: 'EQP_CRANE_7_15T', domain: GeneralTariffDomain.EQUIPMENT, itemKey: 'CRANE_7_15_TON', unitLabel: 'Unit/Jam', amountIdr: 100000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI C' },
+    { tariffCode: 'EQP_LONGBOAT_1_60PK', domain: GeneralTariffDomain.EQUIPMENT, itemKey: 'LONGBOAT_1_60_PK', unitLabel: 'Unit/Jam', amountIdr: 35000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI C' },
+    { tariffCode: 'EQP_GEROBAK_DORONG', domain: GeneralTariffDomain.EQUIPMENT, itemKey: 'GEROBAK_DORONG', unitLabel: 'Unit/Jam', amountIdr: 1000, legalBasis: 'Perda Mimika 4/2023 Lampiran XI C' },
+    // Utilitas Air Bersih (Lampiran XI D.1.d)
+    { tariffCode: 'UTL_AIR_BERSIH', domain: GeneralTariffDomain.UTILITY, itemKey: 'AIR_BERSIH', unitLabel: 'Liter', amountIdr: 500, legalBasis: 'Perda Mimika 4/2023 Lampiran XI D.1.d' },
+  ];
+
+  for (const gt of generalTariffs) {
+    await prisma.generalTariff.upsert({
+      where: { tariffCode: gt.tariffCode },
+      update: {},
+      create: { ...gt, effectiveFrom },
     });
   }
 

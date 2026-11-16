@@ -22,8 +22,10 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { BillingService } from './billing.service';
 import {
   BankPaymentWebhookDto,
+  DecideBillingAdjustmentDto,
   GenerateBillingDto,
   RecordPaymentDto,
+  RequestBillingAdjustmentDto,
   VoidInvoiceDto,
 } from './dto/billing.dto';
 
@@ -177,6 +179,37 @@ export class BillingController {
     @Req() req: { portScope: ScopeFilter },
   ) {
     return this.billingService.verifyPayment(paymentId, user, req.portScope);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
+  @Post('invoices/:id/adjustments')
+  @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.BENDAHARA,
+    UserRole.OPERATOR_KAPAL,
+  )
+  requestAdjustment(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RequestBillingAdjustmentDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.billingService.requestAdjustment(id, dto, user, req.portScope);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
+  @Post('adjustments/:adjustmentId/decide')
+  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
+  decideAdjustment(
+    @Param('adjustmentId', ParseIntPipe) adjustmentId: number,
+    @Body() dto: DecideBillingAdjustmentDto,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.billingService.decideAdjustment(adjustmentId, dto, actor, req.portScope);
   }
 }
 

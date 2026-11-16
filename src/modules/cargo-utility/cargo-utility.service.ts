@@ -28,8 +28,13 @@ export class CargoUtilityService {
   async createCargoRecord(dto: CreateCargoRecordDto, actor: AuthenticatedUser) {
     await this.assertVisitBelongsToPort(dto.portId, dto.visitId);
 
+    const ratePerUnitIdr = await this.resolveRateOrUseProvided(
+      dto.tariffCode,
+      dto.ratePerUnitIdr,
+    );
+
     const days = dto.durationDays ?? 1;
-    const totalAmountIdr = DecimalUtil.roundIdr(dto.quantity * days * dto.ratePerUnitIdr);
+    const totalAmountIdr = DecimalUtil.roundIdr(dto.quantity * days * ratePerUnitIdr);
     const recordNumber = `CRG-${dto.portId}-${Date.now()}`;
 
     return this.prisma.$transaction(async (tx) => {
@@ -44,7 +49,7 @@ export class CargoUtilityService {
           unitLabel: dto.unitLabel,
           storageLocation: dto.storageLocation ?? null,
           durationDays: days,
-          ratePerUnitIdr: dto.ratePerUnitIdr,
+          ratePerUnitIdr,
           totalAmountIdr,
           recordedById: actor.id,
         },
@@ -109,8 +114,13 @@ export class CargoUtilityService {
   async createEquipmentRental(dto: CreateEquipmentRentalDto, actor: AuthenticatedUser) {
     await this.assertVisitBelongsToPort(dto.portId, dto.visitId);
 
+    const ratePerHourIdr = await this.resolveRateOrUseProvided(
+      dto.tariffCode,
+      dto.ratePerHourIdr,
+    );
+
     const units = dto.unitCount ?? 1;
-    const totalAmountIdr = DecimalUtil.roundIdr(units * dto.durationHours * dto.ratePerHourIdr);
+    const totalAmountIdr = DecimalUtil.roundIdr(units * dto.durationHours * ratePerHourIdr);
     const rentalNumber = `EQP-${dto.portId}-${Date.now()}`;
 
     return this.prisma.$transaction(async (tx) => {
@@ -123,7 +133,7 @@ export class CargoUtilityService {
           capacityLabel: dto.capacityLabel,
           unitCount: units,
           durationHours: dto.durationHours,
-          ratePerHourIdr: dto.ratePerHourIdr,
+          ratePerHourIdr,
           totalAmountIdr,
           recordedById: actor.id,
         },
@@ -201,8 +211,13 @@ export class CargoUtilityService {
       }
     }
 
+    const ratePerUnitIdr = await this.resolveRateOrUseProvided(
+      dto.tariffCode,
+      dto.ratePerUnitIdr,
+    );
+
     const volumeConsumed = DecimalUtil.round2(dto.meterEnd - dto.meterStart);
-    const totalAmountIdr = DecimalUtil.roundIdr(volumeConsumed * dto.ratePerUnitIdr);
+    const totalAmountIdr = DecimalUtil.roundIdr(volumeConsumed * ratePerUnitIdr);
     const readingNumber = `UTL-${dto.portId}-${Date.now()}`;
 
     return this.prisma.$transaction(async (tx) => {
@@ -217,7 +232,7 @@ export class CargoUtilityService {
           meterEnd: dto.meterEnd,
           volumeConsumed,
           unitLabel: dto.unitLabel,
-          ratePerUnitIdr: dto.ratePerUnitIdr,
+          ratePerUnitIdr,
           totalAmountIdr,
           recordedById: actor.id,
         },
@@ -277,6 +292,23 @@ export class CargoUtilityService {
 
       return updated;
     });
+  }
+
+  private async resolveRateOrUseProvided(
+    tariffCode?: string,
+    explicitRate?: number,
+  ): Promise<number> {
+    if (tariffCode) {
+      const tariff = await this.prisma.generalTariff.findUnique({ where: { tariffCode } });
+      if (!tariff || !tariff.isActive) {
+        throw new NotFoundException(`Active GeneralTariff ${tariffCode} not found`);
+      }
+      return DecimalUtil.toNumber(tariff.amountIdr);
+    }
+    if (explicitRate === undefined) {
+      throw new BadRequestException('Either tariffCode or explicit rate must be provided');
+    }
+    return explicitRate;
   }
 
   private async assertVisitBelongsToPort(portId: number, visitId?: number): Promise<void> {

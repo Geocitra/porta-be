@@ -11,6 +11,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { ConfigService } from '@nestjs/config';
 import {
   ActivityMode,
+  AdjustmentApprovalStatus,
   BerthCategory,
   BillingEligibility,
   BillingStage,
@@ -33,8 +34,10 @@ import { TariffResolverService } from '../tariffs/tariff-resolver.service';
 import { VISIT_DEPARTED_EVENT, VisitDepartedEvent } from '../visits/visits.service';
 import {
   BankPaymentWebhookDto,
+  DecideBillingAdjustmentDto,
   GenerateBillingDto,
   RecordPaymentDto,
+  RequestBillingAdjustmentDto,
   VoidInvoiceDto,
 } from './dto/billing.dto';
 
@@ -818,6 +821,96 @@ export class BillingService {
       });
 
       return { payment, invoiceStatus: nextStatus, ssrdNumber };
+    });
+  }
+
+  async requestAdjustment(
+    invoiceId: number,
+    dto: RequestBillingAdjustmentDto,
+    user: AuthenticatedUser,
+    scope: ScopeFilter,
+  ) {
+    const invoice = await this.findInvoiceScoped(invoiceId, scope);
+    if (invoice.status === InvoiceStatus.VOID || invoice.status === InvoiceStatus.DRAFT) {
+      throw new BadRequestException(`Cannot request adjustment on ${invoice.status} invoice`);
+    }
+
+    const requestNumber = `ADJ-${invoice.portId}-${Date.now()}`;
+
+    return this.prisma.$transaction(async (tx) => {
+      const adj = await tx.billingAdjustment.create({
+        data: {
+          requestNumber,
+          portId: invoice.portId,
+          invoiceId: invoice.id,
+          adjustmentType: dto.adjustmentType,
+          requestedAmountIdr: dto.requestedAmountIdr,
+          installmentCount: dto.installmentCount ?? null,
+          deferredUntil: dto.deferredUntil ? new Date(dto.deferredUntil) : null,
+          reason: dto.reason,
+          status: AdjustmentApprovalStatus.REQUESTED,
+          requestedById: user.id,
+        },
+      });
+
+      await this.auditLog.record({
+        actorId: user.id,
+        action: 'BILLING_ADJUSTMENT_REQUESTED',
+        entityName: 'billing_adjustments',
+        entityId: adj.id,
+        afterData: adj,
+        tx,
+      });
+
+      return adj;
+    });
+  }
+
+  async decideAdjustment(
+    adjustmentId: number,
+    dto: DecideBillingAdjustmentDto,
+    actor: AuthenticatedUser,
+    scope: ScopeFilter,
+  ) {
+    if (dto.status === AdjustmentApprovalStatus.REQUESTED) {
+      throw new BadRequestException('Decision must be APPROVED or REJECTED');
+    }
+
+    const adj = await this.prisma.billingAdjustment.findUnique({ where: { id: adjustmentId } });
+    if (!adj) throw new NotFoundException(`BillingAdjustment #${adjustmentId} not found`);
+    if (scope.portId && adj.portId !== scope.portId) {
+      throw new ForbiddenException('Cross-port access denied');
+    }
+    if (adj.status !== AdjustmentApprovalStatus.REQUESTED) {
+      throw new ConflictException(`Adjustment is already ${adj.status}`);
+    }
+
+    // Strict Separation of Duties (Perbup 25/2024 governance): requester cannot approve own request
+    if (adj.requestedById === actor.id) {
+      throw new ForbiddenException('Separation of Duties: requester cannot approve own adjustment');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.billingAdjustment.update({
+        where: { id: adjustmentId },
+        data: {
+          status: dto.status,
+          approvedById: actor.id,
+          approvedAt: new Date(),
+        },
+      });
+
+      await this.auditLog.record({
+        actorId: actor.id,
+        action: `BILLING_ADJUSTMENT_${dto.status}`,
+        entityName: 'billing_adjustments',
+        entityId: adjustmentId,
+        beforeData: { status: adj.status },
+        afterData: updated,
+        tx,
+      });
+
+      return updated;
     });
   }
 

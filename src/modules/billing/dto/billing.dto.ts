@@ -1,8 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { CollectionInstrument, PaymentMethod } from '@prisma/client';
+import {
+  AdjustmentApprovalStatus,
+  BillingAdjustmentType,
+  CollectionInstrument,
+  PaymentMethod,
+} from '@prisma/client';
 import {
   IsDateString,
   IsEnum,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -83,5 +89,38 @@ export class BankPaymentWebhookDto {
   @ApiProperty({ example: '2026-11-17T15:00:00.000Z' })
   @IsDateString()
   paidAt!: string;
+}
+
+export class RequestBillingAdjustmentDto {
+  @ApiProperty({ enum: BillingAdjustmentType })
+  @IsEnum(BillingAdjustmentType)
+  adjustmentType!: BillingAdjustmentType;
+
+  @ApiProperty({ example: 50000 })
+  @IsNumber()
+  @Min(1)
+  requestedAmountIdr!: number;
+
+  @ApiPropertyOptional({ example: 3 })
+  @IsOptional()
+  @IsInt()
+  @Min(2)
+  installmentCount?: number;
+
+  @ApiPropertyOptional({ example: '2026-12-15' })
+  @IsOptional()
+  @IsDateString()
+  deferredUntil?: string;
+
+  @ApiProperty({ example: 'Permohonan angsuran 3 kali sesuai Pasal 19 Perbup 25/2024' })
+  @IsString()
+  @IsNotEmpty()
+  reason!: string;
+}
+
+export class DecideBillingAdjustmentDto {
+  @ApiProperty({ enum: [AdjustmentApprovalStatus.APPROVED, AdjustmentApprovalStatus.REJECTED] })
+  @IsEnum(AdjustmentApprovalStatus)
+  status!: AdjustmentApprovalStatus;
 }
 

@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TerminalClass } from '@prisma/client';
-import { IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { IsDateString, IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export class CreateGateTicketBookDto {
   @ApiProperty({ example: 1 })
@@ -31,6 +31,16 @@ export class CreateGateTicketBookDto {
   @IsNumber()
   @Min(0)
   nominalPerTicket!: number;
+
+  @ApiPropertyOptional({ example: 'PRP-BAPENDA-2026-001', description: 'Perbup 25/2024 Pasal 13 Bapenda porporation number' })
+  @IsOptional()
+  @IsString()
+  porporasiNumber?: string;
+
+  @ApiPropertyOptional({ example: '2026-11-01' })
+  @IsOptional()
+  @IsDateString()
+  porporasiDate?: string;
 
   @ApiPropertyOptional({ example: 'Perda Kab. Mimika No. 4 Tahun 2023 Lampiran XI Hal. 83' })
   @IsOptional()

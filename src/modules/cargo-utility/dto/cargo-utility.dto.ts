@@ -47,10 +47,16 @@ export class CreateCargoRecordDto {
   @Min(1)
   durationDays?: number;
 
-  @ApiProperty({ example: 2500 })
+  @ApiPropertyOptional({ example: 'CRG_BULOG_PUPUK' })
+  @IsOptional()
+  @IsString()
+  tariffCode?: string;
+
+  @ApiPropertyOptional({ example: 400 })
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  ratePerUnitIdr!: number;
+  ratePerUnitIdr?: number;
 }
 
 export class CreateEquipmentRentalDto {
@@ -83,10 +89,16 @@ export class CreateEquipmentRentalDto {
   @Min(0.5)
   durationHours!: number;
 
-  @ApiProperty({ example: 150000 })
+  @ApiPropertyOptional({ example: 'EQP_FORKLIFT_3_6T' })
+  @IsOptional()
+  @IsString()
+  tariffCode?: string;
+
+  @ApiPropertyOptional({ example: 20000 })
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  ratePerHourIdr!: number;
+  ratePerHourIdr?: number;
 }
 
 export class CreateUtilityReadingDto {
@@ -123,10 +135,16 @@ export class CreateUtilityReadingDto {
   @IsNotEmpty()
   unitLabel!: string;
 
-  @ApiProperty({ example: 500 })
+  @ApiPropertyOptional({ example: 'UTL_AIR_BERSIH' })
+  @IsOptional()
+  @IsString()
+  tariffCode?: string;
+
+  @ApiPropertyOptional({ example: 500 })
+  @IsOptional()
   @IsNumber()
   @Min(0)
-  ratePerUnitIdr!: number;
+  ratePerUnitIdr?: number;
 }
 
 export class PayChargeDto {

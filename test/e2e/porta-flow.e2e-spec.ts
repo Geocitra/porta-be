@@ -38,6 +38,7 @@ describe('PORTA End-to-End Flow & Security Guardrails (e2e)', () => {
   let createdEquipmentId = 0;
   let createdUtilityId = 0;
   let createdManifestId = 0;
+  let createdAdjustmentId = 0;
   let pomakoPortId = 0;
   let pemdaBerthId = 0;
   let uppBerthId = 0;
@@ -111,6 +112,7 @@ describe('PORTA End-to-End Flow & Security Guardrails (e2e)', () => {
       const invoices = await prisma.invoice.findMany({ where: { visitId: createdVisitId } });
       const invoiceIds = invoices.map((i) => i.id);
       if (invoiceIds.length > 0) {
+        await prisma.billingAdjustment.deleteMany({ where: { invoiceId: { in: invoiceIds } } });
         await prisma.warning.deleteMany({ where: { invoiceId: { in: invoiceIds } } });
         await prisma.payment.deleteMany({ where: { invoiceId: { in: invoiceIds } } });
         await prisma.invoiceItem.deleteMany({ where: { invoiceId: { in: invoiceIds } } });
@@ -713,6 +715,56 @@ describe('PORTA End-to-End Flow & Security Guardrails (e2e)', () => {
       .expect(200);
     expect(summaryRes.body.passengerTraffic.totalPassengers).toBeGreaterThanOrEqual(17);
     expect(summaryRes.body.passengerTraffic.totalVehicles).toBeGreaterThanOrEqual(4);
+  });
+
+  it('10. Enforces GeneralTariff DB lookup & Separation of Duties on BillingAdjustment', async () => {
+    const finalInvoice = await prisma.invoice.findFirstOrThrow({
+      where: { visitId: createdVisitId, billingStage: BillingStage.FINAL_SKRD },
+    });
+
+    // Bendahara requests overpayment refund / adjustment
+    const adjRes = await request(app.getHttpServer())
+      .post(`/api/v1/billing/invoices/${finalInvoice.id}/adjustments`)
+      .set('Authorization', `Bearer ${bendaharaToken}`)
+      .send({
+        adjustmentType: 'OVERPAYMENT_REFUND',
+        requestedAmountIdr: 1000,
+        reason: 'Test Separation of Duties Perbup 25/2024',
+      })
+      .expect(201);
+    createdAdjustmentId = adjRes.body.id;
+
+    // Same user (Bendahara) tries to self-approve -> 403 Forbidden
+    await request(app.getHttpServer())
+      .post(`/api/v1/billing/adjustments/${createdAdjustmentId}/decide`)
+      .set('Authorization', `Bearer ${bendaharaToken}`)
+      .send({ status: 'APPROVED' })
+      .expect(403);
+
+    // Different authorized user (Admin Pelabuhan) approves -> 201 Created
+    const approveRes = await request(app.getHttpServer())
+      .post(`/api/v1/billing/adjustments/${createdAdjustmentId}/decide`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'APPROVED' })
+      .expect(201);
+    expect(approveRes.body.status).toBe('APPROVED');
+
+    // Cargo record using tariffCode lookup (no hardcoded rate sent!)
+    const autoTariffCargo = await request(app.getHttpServer())
+      .post('/api/v1/cargo-utility/cargo')
+      .set('Authorization', `Bearer ${petugasToken}`)
+      .send({
+        portId: pomakoPortId,
+        cargoCategory: 'BARANG_BULOG_PUPUK',
+        description: 'Gula Bulog 10 ton (TariffCode Lookup)',
+        quantity: 10,
+        unitLabel: 'ton',
+        tariffCode: 'CRG_BULOG_PUPUK',
+      })
+      .expect(201);
+    expect(Number(autoTariffCargo.body.ratePerUnitIdr)).toBe(400);
+    expect(Number(autoTariffCargo.body.totalAmountIdr)).toBe(4000);
+    await prisma.cargoHandlingRecord.delete({ where: { id: autoTariffCargo.body.id } });
   });
 });
 

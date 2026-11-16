@@ -255,6 +255,26 @@ enum TerminalClass {
   KELAS_C
 }
 
+enum GeneralTariffDomain {
+  CARGO
+  EQUIPMENT
+  UTILITY
+  TERMINAL_PASSENGER
+}
+
+enum BillingAdjustmentType {
+  INSTALLMENT_PLAN
+  PAYMENT_DEFERRAL
+  OVERPAYMENT_REFUND
+  CREDIT_TRANSFER
+}
+
+enum AdjustmentApprovalStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+}
+
 // ============================================================================
 // MASTER DATA, ONBOARDING & ACCESS CONTROL
 // ============================================================================
@@ -284,6 +304,7 @@ model Port {
   equipmentRentals   EquipmentRentalRecord[]
   utilityReadings    UtilityMeterReading[]
   manifests          VesselManifest[]
+  billingAdjustments BillingAdjustment[]
 
   @@map("ports")
 }
@@ -319,6 +340,8 @@ model User {
   recordedEquipments EquipmentRentalRecord[] @relation("EquipmentRecorder")
   recordedUtilities  UtilityMeterReading[]   @relation("UtilityRecorder")
   recordedManifests  VesselManifest[]        @relation("ManifestRecorder")
+  requestedAdjusts   BillingAdjustment[]     @relation("AdjustmentRequester")
+  approvedAdjusts    BillingAdjustment[]     @relation("AdjustmentApprover")
 
   @@index([portId])
   @@index([operatorId])
@@ -555,6 +578,7 @@ model Invoice {
   items         InvoiceItem[]
   payments      Payment[]
   warnings      Warning[]
+  adjustments   BillingAdjustment[]
 
   @@index([portId, status])
   @@index([visitId, billingStage])
@@ -741,6 +765,8 @@ model GateTicketBook {
   serialEnd        Int                  @map("serial_end")
   nominalPerTicket Decimal              @map("nominal_per_ticket") @db.Decimal(14, 2)
   status           GateTicketBookStatus @default(STOK)
+  porporasiNumber  String?              @map("porporasi_number") @db.VarChar(80)
+  porporasiDate    DateTime?            @map("porporasi_date") @db.Date
   legalBasis       String?              @map("legal_basis") @db.VarChar(255)
   createdAt        DateTime             @default(now()) @map("created_at")
   updatedAt        DateTime             @updatedAt @map("updated_at")
@@ -1011,4 +1037,53 @@ model UtilityMeterReading {
 
   @@index([portId, paymentStatus])
   @@map("utility_meter_readings")
+}
+
+// ============================================================================
+// GENERAL TARIFFS (NON-VESSEL) & PERBUP 25/2024 ADJUSTMENTS (INSTALLMENT/REFUND)
+// ============================================================================
+
+model GeneralTariff {
+  id            Int                 @id @default(autoincrement())
+  tariffCode    String              @unique @map("tariff_code") @db.VarChar(60)
+  domain        GeneralTariffDomain
+  itemKey       String              @map("item_key") @db.VarChar(80)
+  unitLabel     String              @map("unit_label") @db.VarChar(40)
+  amountIdr     Decimal             @map("amount_idr") @db.Decimal(14, 2)
+  legalBasis    String              @map("legal_basis") @db.VarChar(255)
+  effectiveFrom DateTime            @map("effective_from")
+  effectiveTo   DateTime?           @map("effective_to")
+  isActive      Boolean             @default(true) @map("is_active")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+
+  @@index([domain, itemKey, isActive])
+  @@map("general_tariffs")
+}
+
+model BillingAdjustment {
+  id                 Int                      @id @default(autoincrement())
+  requestNumber      String                   @unique @map("request_number") @db.VarChar(60)
+  portId             Int                      @map("port_id")
+  invoiceId          Int                      @map("invoice_id")
+  adjustmentType     BillingAdjustmentType    @map("adjustment_type")
+  requestedAmountIdr Decimal                  @map("requested_amount_idr") @db.Decimal(16, 2)
+  installmentCount   Int?                     @map("installment_count")
+  deferredUntil      DateTime?                @map("deferred_until") @db.Date
+  reason             String                   @db.Text
+  status             AdjustmentApprovalStatus @default(REQUESTED)
+  requestedById      Int                      @map("requested_by_id")
+  approvedById       Int?                     @map("approved_by_id")
+  approvedAt         DateTime?                @map("approved_at")
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
+
+  port        Port    @relation(fields: [portId], references: [id], onDelete: Restrict)
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  requestedBy User    @relation("AdjustmentRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  approvedBy  User?   @relation("AdjustmentApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+
+  @@index([portId, status])
+  @@index([invoiceId])
+  @@map("billing_adjustments")
 }

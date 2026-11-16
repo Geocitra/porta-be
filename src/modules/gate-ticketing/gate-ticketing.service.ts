@@ -4,8 +4,14 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
-import { GateTicketBookStatus, HandoverStatus, TerminalClass } from '@prisma/client';
+import {
+  GateTicketBookStatus,
+  GeneralTariffDomain,
+  HandoverStatus,
+  TerminalClass,
+} from '@prisma/client';
 import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ScopeFilter } from '../../common/guards/port-scope.guard';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -39,7 +45,12 @@ export class GateTicketingService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      const book = await tx.gateTicketBook.create({ data: dto });
+      const book = await tx.gateTicketBook.create({
+        data: {
+          ...dto,
+          porporasiDate: dto.porporasiDate ? new Date(dto.porporasiDate) : null,
+        },
+      });
       await this.auditLog.record({
         actorId: actor.id,
         action: 'GATE_BOOK_CREATED',
@@ -232,23 +243,43 @@ export class GateTicketingService {
       throw new ConflictException(`Manifest already exists for visit #${dto.visitId}`);
     }
 
-    // Perda Mimika 4/2023 Lampiran XI D.2: Terminal Penumpang Kelas A/B/C
+    // Perda Mimika 4/2023 Lampiran XI D.2: resolve Terminal Penumpang tariff from general_tariffs (Zero Hardcoding!)
     const tClass = dto.terminalClass ?? TerminalClass.KELAS_B;
-    const departureFeeMap: Record<TerminalClass, number> = {
-      [TerminalClass.KELAS_A]: 4000,
-      [TerminalClass.KELAS_B]: 3000,
-      [TerminalClass.KELAS_C]: 2000,
-    };
-    const greeterFeeMap: Record<TerminalClass, number> = {
-      [TerminalClass.KELAS_A]: 3000,
-      [TerminalClass.KELAS_B]: 3000,
-      [TerminalClass.KELAS_C]: 2000,
-    };
+    const now = new Date();
+    const [departTariff, greeterTariff] = await Promise.all([
+      this.prisma.generalTariff.findFirst({
+        where: {
+          domain: GeneralTariffDomain.TERMINAL_PASSENGER,
+          itemKey: `${tClass}_DEPARTURE`,
+          isActive: true,
+          effectiveFrom: { lte: now },
+          OR: [{ effectiveTo: null }, { effectiveTo: { gte: now } }],
+        },
+        orderBy: { effectiveFrom: 'desc' },
+      }),
+      this.prisma.generalTariff.findFirst({
+        where: {
+          domain: GeneralTariffDomain.TERMINAL_PASSENGER,
+          itemKey: `${tClass}_GREETER`,
+          isActive: true,
+          effectiveFrom: { lte: now },
+          OR: [{ effectiveTo: null }, { effectiveTo: { gte: now } }],
+        },
+        orderBy: { effectiveFrom: 'desc' },
+      }),
+    ]);
+
+    if (!departTariff || !greeterTariff) {
+      throw new UnprocessableEntityException(
+        `Active terminal passenger tariff not found in general_tariffs for ${tClass}`,
+      );
+    }
 
     const departingPassengers = dto.adultCount + (dto.childCount ?? 0);
     const greeters = dto.greeterCount ?? 0;
     const terminalFeeIdr = DecimalUtil.roundIdr(
-      departingPassengers * departureFeeMap[tClass] + greeters * greeterFeeMap[tClass],
+      departingPassengers * DecimalUtil.toNumber(departTariff.amountIdr) +
+        greeters * DecimalUtil.toNumber(greeterTariff.amountIdr),
     );
 
     const manifestNumber = `MNF-${dto.portId}-${Date.now()}`;
