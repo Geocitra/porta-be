@@ -11,6 +11,7 @@ import { ScopeFilter } from '../../common/guards/port-scope.guard';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditLogService } from '../../common/utils/audit-log.service';
 import { DecimalUtil } from '../../common/utils/decimal.util';
+import { DocNumberUtil } from '../../common/utils/doc-number.util';
 import {
   CreateCargoRecordDto,
   CreateEquipmentRentalDto,
@@ -35,7 +36,7 @@ export class CargoUtilityService {
 
     const days = dto.durationDays ?? 1;
     const totalAmountIdr = DecimalUtil.roundIdr(dto.quantity * days * ratePerUnitIdr);
-    const recordNumber = `CRG-${dto.portId}-${Date.now()}`;
+    const recordNumber = DocNumberUtil.generate('CRG', dto.portId);
 
     return this.prisma.$transaction(async (tx) => {
       const record = await tx.cargoHandlingRecord.create({
@@ -121,7 +122,7 @@ export class CargoUtilityService {
 
     const units = dto.unitCount ?? 1;
     const totalAmountIdr = DecimalUtil.roundIdr(units * dto.durationHours * ratePerHourIdr);
-    const rentalNumber = `EQP-${dto.portId}-${Date.now()}`;
+    const rentalNumber = DocNumberUtil.generate('EQP', dto.portId);
 
     return this.prisma.$transaction(async (tx) => {
       const rental = await tx.equipmentRentalRecord.create({
@@ -218,7 +219,7 @@ export class CargoUtilityService {
 
     const volumeConsumed = DecimalUtil.round2(dto.meterEnd - dto.meterStart);
     const totalAmountIdr = DecimalUtil.roundIdr(volumeConsumed * ratePerUnitIdr);
-    const readingNumber = `UTL-${dto.portId}-${Date.now()}`;
+    const readingNumber = DocNumberUtil.generate('UTL', dto.portId);
 
     return this.prisma.$transaction(async (tx) => {
       const reading = await tx.utilityMeterReading.create({

@@ -11,6 +11,7 @@ import { ScopeFilter } from '../../common/guards/port-scope.guard';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditLogService } from '../../common/utils/audit-log.service';
 import { DecimalUtil } from '../../common/utils/decimal.util';
+import { DocNumberUtil } from '../../common/utils/doc-number.util';
 import {
   CreateAssetLeaseDto,
   CreatePortAssetDto,
@@ -84,7 +85,7 @@ export class AssetsLeasesService {
     const totalAnnualAmountIdr = DecimalUtil.roundIdr(
       DecimalUtil.toNumber(asset.areaSqm) * DecimalUtil.toNumber(asset.annualRatePerSqmIdr),
     );
-    const contractNumber = `PKS-${asset.portId}-${Date.now()}`;
+    const contractNumber = DocNumberUtil.generate('PKS', asset.portId);
 
     return this.prisma.$transaction(async (tx) => {
       // Optimistic Locking: prevent two tenants from leasing the same asset concurrently

@@ -11,6 +11,7 @@ import { AuthenticatedUser } from '../../common/decorators/current-user.decorato
 import { ScopeFilter } from '../../common/guards/port-scope.guard';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditLogService } from '../../common/utils/audit-log.service';
+import { DocNumberUtil } from '../../common/utils/doc-number.util';
 import { IssueWarningDto } from './dto/warnings.dto';
 
 export const WARNING_ISSUED_EVENT = 'warning.issued';
@@ -71,7 +72,7 @@ export class WarningsService {
       );
     }
 
-    const warningNumber = `WRN-${invoice.portId}-${Date.now()}`;
+    const warningNumber = DocNumberUtil.generate('WRN', invoice.portId);
 
     const warning = await this.prisma.$transaction(async (tx) => {
       const created = await tx.warning.create({

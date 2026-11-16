@@ -9,6 +9,7 @@ import { AuthenticatedUser } from '../../common/decorators/current-user.decorato
 import { ScopeFilter } from '../../common/guards/port-scope.guard';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditLogService } from '../../common/utils/audit-log.service';
+import { DocNumberUtil } from '../../common/utils/doc-number.util';
 import { StorageService, UploadedFilePayload } from '../../common/utils/storage.service';
 import {
   CreateMaintenanceTicketDto,
@@ -66,7 +67,7 @@ export class MaintenanceService {
       ? await this.storage.saveFile(`maintenance/${dto.portId}`, evidenceFile)
       : null;
 
-    const ticketNumber = `MNT-${dto.portId}-${Date.now()}`;
+    const ticketNumber = DocNumberUtil.generate('MNT', dto.portId);
 
     return this.prisma.$transaction(async (tx) => {
       const ticket = await tx.maintenanceTicket.create({

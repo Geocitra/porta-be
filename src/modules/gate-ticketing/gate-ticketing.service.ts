@@ -17,6 +17,7 @@ import { ScopeFilter } from '../../common/guards/port-scope.guard';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditLogService } from '../../common/utils/audit-log.service';
 import { DecimalUtil } from '../../common/utils/decimal.util';
+import { DocNumberUtil } from '../../common/utils/doc-number.util';
 import {
   CloseGateHandoverDto,
   CreateFerryRouteDto,
@@ -282,7 +283,7 @@ export class GateTicketingService {
         greeters * DecimalUtil.toNumber(greeterTariff.amountIdr),
     );
 
-    const manifestNumber = `MNF-${dto.portId}-${Date.now()}`;
+    const manifestNumber = DocNumberUtil.generate('MNF', dto.portId);
 
     return this.prisma.$transaction(async (tx) => {
       const manifest = await tx.vesselManifest.create({

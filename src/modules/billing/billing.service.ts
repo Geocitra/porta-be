@@ -27,6 +27,7 @@ import { ScopeFilter } from '../../common/guards/port-scope.guard';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditLogService } from '../../common/utils/audit-log.service';
 import { DecimalUtil } from '../../common/utils/decimal.util';
+import { DocNumberUtil } from '../../common/utils/doc-number.util';
 import { StorageService, UploadedFilePayload } from '../../common/utils/storage.service';
 import { EtmalRoundingMode } from '../../config/billing.constants';
 import { TariffCalculator } from '../tariffs/tariff.calculator';
@@ -264,7 +265,7 @@ export class BillingService {
         : instrument === CollectionInstrument.KARCIS
           ? 'KRC'
           : 'SKRD';
-    const invoiceNumber = `${prefix}-${visit.portId}-${Date.now()}`;
+    const invoiceNumber = DocNumberUtil.generate(prefix, visit.portId);
 
     return this.prisma.$transaction(async (tx) => {
       const invoice = await tx.invoice.create({
@@ -333,7 +334,7 @@ export class BillingService {
         issuedStatus === InvoiceStatus.PAID || issuedStatus === InvoiceStatus.OVERPAID;
       const ssrdNumber =
         isSettled && !invoice.ssrdNumber
-          ? `SSRD-${invoice.portId}-${Date.now()}`
+          ? DocNumberUtil.generate('SSRD', invoice.portId)
           : invoice.ssrdNumber;
 
       const updated = await tx.invoice.updateMany({
@@ -494,7 +495,7 @@ export class BillingService {
         nextStatus === InvoiceStatus.PAID || nextStatus === InvoiceStatus.OVERPAID;
       const ssrdNumber =
         isSettled && !invoice.ssrdNumber
-          ? `SSRD-${invoice.portId}-${Date.now()}`
+          ? DocNumberUtil.generate('SSRD', invoice.portId)
           : invoice.ssrdNumber;
 
       await tx.invoice.update({
@@ -636,7 +637,7 @@ export class BillingService {
         nextStatus === InvoiceStatus.PAID || nextStatus === InvoiceStatus.OVERPAID;
       const ssrdNumber =
         isSettled && !payment.invoice.ssrdNumber
-          ? `SSRD-${payment.invoice.portId}-${Date.now()}`
+          ? DocNumberUtil.generate('SSRD', payment.invoice.portId)
           : payment.invoice.ssrdNumber;
 
       await tx.invoice.update({
@@ -796,7 +797,7 @@ export class BillingService {
         nextStatus === InvoiceStatus.PAID || nextStatus === InvoiceStatus.OVERPAID;
       const ssrdNumber =
         isSettled && !invoice.ssrdNumber
-          ? `SSRD-${invoice.portId}-${Date.now()}`
+          ? DocNumberUtil.generate('SSRD', invoice.portId)
           : invoice.ssrdNumber;
 
       await tx.invoice.update({
@@ -835,7 +836,7 @@ export class BillingService {
       throw new BadRequestException(`Cannot request adjustment on ${invoice.status} invoice`);
     }
 
-    const requestNumber = `ADJ-${invoice.portId}-${Date.now()}`;
+    const requestNumber = DocNumberUtil.generate('ADJ', invoice.portId);
 
     return this.prisma.$transaction(async (tx) => {
       const adj = await tx.billingAdjustment.create({

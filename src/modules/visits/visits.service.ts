@@ -23,6 +23,7 @@ import { ScopeFilter } from '../../common/guards/port-scope.guard';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditLogService } from '../../common/utils/audit-log.service';
 import { DecimalUtil } from '../../common/utils/decimal.util';
+import { DocNumberUtil } from '../../common/utils/doc-number.util';
 import { StorageService, UploadedFilePayload } from '../../common/utils/storage.service';
 import { BILLING_CONSTANTS } from '../../config/billing.constants';
 import { TariffResolverService } from '../tariffs/tariff-resolver.service';
@@ -148,7 +149,7 @@ export class VisitsService {
         ? VisitStatus.APPROVED
         : VisitStatus.REQUESTED;
 
-    const visitNumber = `VST-${dto.portId}-${Date.now()}`;
+    const visitNumber = DocNumberUtil.generate('VST', dto.portId);
 
     const created = await this.prisma.$transaction(async (tx) => {
       const visit = await tx.shipVisit.create({

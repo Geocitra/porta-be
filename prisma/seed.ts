@@ -78,18 +78,23 @@ async function main() {
     },
   });
 
-  // 3. Seed Sample Operator & Vessel
-  const operator = await prisma.shipOperator.create({
-    data: {
-      name: 'PT Pelayaran Mimika Sejahtera',
-      npwp: '01.234.567.8-954.000',
-      phone: '081234567890',
-      email: 'ops@mimika-shipping.co.id',
-      operatorProfile: OperatorProfile.REGULAR_SCHEDULED,
-      verificationStatus: VerificationStatus.VERIFIED,
-      verifiedAt: new Date(),
-    },
+  // 3. Seed Sample Operator & Vessel (Idempotent lookup by NPWP/email)
+  let operator = await prisma.shipOperator.findFirst({
+    where: { email: 'ops@mimika-shipping.co.id' },
   });
+  if (!operator) {
+    operator = await prisma.shipOperator.create({
+      data: {
+        name: 'PT Pelayaran Mimika Sejahtera',
+        npwp: '01.234.567.8-954.000',
+        phone: '081234567890',
+        email: 'ops@mimika-shipping.co.id',
+        operatorProfile: OperatorProfile.REGULAR_SCHEDULED,
+        verificationStatus: VerificationStatus.VERIFIED,
+        verifiedAt: new Date(),
+      },
+    });
+  }
 
   await prisma.vessel.upsert({
     where: { registrationNumber: 'REG-PMK-001' },

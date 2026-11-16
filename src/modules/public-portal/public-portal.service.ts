@@ -5,6 +5,7 @@ import { ScopeFilter } from '../../common/guards/port-scope.guard';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditLogService } from '../../common/utils/audit-log.service';
 import { DecimalUtil } from '../../common/utils/decimal.util';
+import { DocNumberUtil } from '../../common/utils/doc-number.util';
 import { CreateComplaintDto, ResolveComplaintDto } from './dto/public-portal.dto';
 
 @Injectable()
@@ -108,7 +109,7 @@ export class PublicPortalService {
       throw new NotFoundException(`Port #${dto.portId} not found`);
     }
 
-    const ticketNumber = `ADU-${port.code}-${Date.now()}`;
+    const ticketNumber = DocNumberUtil.generate('ADU', port.code);
     return this.prisma.complaint.create({
       data: {
         ticketNumber,
