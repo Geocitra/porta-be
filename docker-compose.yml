@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: porta_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: porta_secure_password
+      POSTGRES_DB: porta_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - porta_pgdata:/var/lib/postgresql/data
+
+  porta-be:
+    build: .
+    container_name: porta_be
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      PORT: 4000
+      NODE_ENV: production
+      DATABASE_URL: "postgresql://postgres:porta_secure_password@postgres:5432/porta_db?schema=public"
+      JWT_SECRET: "${JWT_SECRET:-change-this-in-production}"
+      JWT_EXPIRES_IN: "1d"
+      ETMAL_ROUNDING_MODE: "ROUND_UP"
+      DEFAULT_USD_TO_IDR_RATE: 16000
+    ports:
+      - "4000:4000"
+    volumes:
+      - porta_uploads:/app/uploads
+
+volumes:
+  porta_pgdata:
+  porta_uploads:
+

@@ -1,0 +1,975 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// ENUMS (Single Ubiquitous Language)
+// ============================================================================
+
+enum UserRole {
+  SUPERADMIN
+  ADMIN_PELABUHAN
+  PETUGAS_DERMAGA
+  BENDAHARA
+  OPERATOR_KAPAL
+  DISHUB_EKSEKUTIF
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum DocumentCategory {
+  SIUPAL_NIB
+  NPWP
+  SURAT_UKUR
+  PAS_BESAR_KECIL
+  LAINNYA
+}
+
+enum BerthType {
+  DERMAGA_BESI_BETON_KAYU
+  BRESSING_DOLPHIN_PELAMPUNG
+  PINGGIRAN_TALUD
+}
+
+enum AuthorityType {
+  PEMDA_DISHUB
+  UPP_KEMENHUB
+  TUKS_TERSUS
+}
+
+enum BillingEligibility {
+  BILLABLE
+  NOT_BILLABLE
+  PENDING_VERIFICATION
+}
+
+enum OperatorProfile {
+  REGULAR_SCHEDULED
+  INCIDENTAL
+}
+
+enum ShipType {
+  NIAGA
+  NON_NIAGA
+}
+
+enum ShippingCategory {
+  LUAR_NEGERI
+  DALAM_NEGERI
+  PELRA_PERINTIS
+}
+
+enum ServiceCode {
+  JASA_LABUH
+  KEGIATAN_TUKS_TERSUS
+  JASA_TAMBAT_UMUM
+  JASA_TAMBAT_KHUSUS
+}
+
+enum ActivityMode {
+  NORMAL
+  FIXED_ACTIVITY
+}
+
+enum TariffUnitType {
+  GT_PER_15_DAYS
+  GT_PER_MONTH
+  GT_PER_ETMAL
+}
+
+enum Currency {
+  IDR
+  USD
+}
+
+enum VisitOrigin {
+  OPERATOR_REQUEST
+  OFFICER_INCIDENTAL
+}
+
+enum VisitActivityMode {
+  NORMAL
+  FIXED_ACTIVITY
+  TUKS_TERSUS
+}
+
+enum VisitStatus {
+  REQUESTED
+  APPROVED
+  ANCHORED
+  BERTHED
+  DEPARTED
+  BILLED
+  SETTLED
+  CANCELLED
+}
+
+enum BerthCategory {
+  UMUM
+  KHUSUS_TUKS
+}
+
+enum BillingStage {
+  ESTIMATE
+  ADVANCE_SKRD
+  FINAL_SKRD
+  ADJUSTMENT_SKRD
+}
+
+enum CollectionInstrument {
+  KARCIS
+  SKRD
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIAL
+  PAID
+  OVERPAID
+  VOID
+}
+
+enum PaymentMethod {
+  CASH_TREASURER
+  BANK_TRANSFER
+  VA
+  QRIS
+}
+
+enum DailyReportStatus {
+  SUBMITTED
+  ACKNOWLEDGED
+}
+
+enum WarningLevel {
+  TEGURAN_1
+  TEGURAN_2
+  TEGURAN_3
+}
+
+enum WarningStatus {
+  SENT
+  RESOLVED
+}
+
+enum ComplaintStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum GateTicketBookStatus {
+  STOK
+  ACTIVE
+  HABIS
+}
+
+enum HandoverStatus {
+  DISTRIBUTED
+  SETTLED
+}
+
+enum PortAssetType {
+  KIOS
+  GUDANG
+  LAHAN_GALANGAN
+  PERAIRAN_ATAS_AIR
+  RUANG_IKLAN
+}
+
+enum PortAssetStatus {
+  AVAILABLE
+  LEASED
+  MAINTENANCE
+}
+
+enum LeaseStatus {
+  DRAFT
+  ACTIVE
+  EXPIRED
+  TERMINATED
+}
+
+enum MaintenanceSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum MaintenanceStatus {
+  REPORTED
+  ASSIGNED
+  IN_PROGRESS
+  VERIFIED_FIXED
+}
+
+enum CargoCategory {
+  BARANG_IMPOR_EKSPOR
+  BARANG_BULOG_PUPUK
+  BARANG_ANTAR_PULAU
+  HEWAN_TERNAK
+  PETI_KEMAS_20FT
+  PETI_KEMAS_40FT
+  PETI_KEMAS_OVER_40FT
+  SHIP_TO_SHIP
+}
+
+enum StorageLocationType {
+  GUDANG_TERTUTUP
+  LAPANGAN_TERBUKA
+}
+
+enum PortEquipmentType {
+  FORKLIFT
+  CRANE_DEREK
+  MOTOR_LONG_BOAT
+  GEROBAK_DORONG
+}
+
+enum UtilityType {
+  AIR_BERSIH
+  LISTRIK
+}
+
+enum ChargePaymentStatus {
+  UNPAID
+  PAID
+  VOID
+}
+
+// ============================================================================
+// MASTER DATA, ONBOARDING & ACCESS CONTROL
+// ============================================================================
+
+model Port {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique @db.VarChar(20)
+  name      String   @db.VarChar(150)
+  location  String?  @db.VarChar(200)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users            User[]
+  berths           Berth[]
+  visits           ShipVisit[]
+  dailyPortReports DailyPortReport[]
+  warnings         Warning[]
+  complaints       Complaint[]
+  gateTicketBooks    GateTicketBook[]
+  gateHandovers      GateWardenHandover[]
+  ferryRoutes        FerryRoute[]
+  portAssets         PortAsset[]
+  assetLeases        AssetLease[]
+  maintenanceTickets MaintenanceTicket[]
+  cargoRecords       CargoHandlingRecord[]
+  equipmentRentals   EquipmentRentalRecord[]
+  utilityReadings    UtilityMeterReading[]
+
+  @@map("ports")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique @db.VarChar(150)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  fullName     String   @map("full_name") @db.VarChar(150)
+  role         UserRole
+  portId       Int?     @map("port_id")
+  operatorId   Int?     @map("operator_id")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  port     Port?         @relation(fields: [portId], references: [id], onDelete: Restrict)
+  operator ShipOperator? @relation("OperatorUsers", fields: [operatorId], references: [id], onDelete: Restrict)
+
+  verifiedOperators ShipOperator[]   @relation("OperatorVerifiedBy")
+  verifiedVessels   Vessel[]         @relation("VesselVerifiedBy")
+  uploadedDocuments Document[]       @relation("DocumentUploadedBy")
+  recordedBerthings BerthingRecord[] @relation("RecordedBy")
+  verifiedPayments  Payment[]         @relation("VerifiedBy")
+  auditLogs         AuditLog[]        @relation("Actor")
+  dailyPortReports   DailyPortReport[]   @relation("ReportOfficer")
+  issuedWarnings     Warning[]           @relation("WarningIssuer")
+  notifications      Notification[]
+  createdLeases      AssetLease[]        @relation("LeaseCreator")
+  verifiedLeasePays  AssetLeasePayment[]   @relation("LeasePaymentVerifier")
+  reportedMaint      MaintenanceTicket[]   @relation("MaintenanceReporter")
+  recordedCargos     CargoHandlingRecord[] @relation("CargoRecorder")
+  recordedEquipments EquipmentRentalRecord[] @relation("EquipmentRecorder")
+  recordedUtilities  UtilityMeterReading[] @relation("UtilityRecorder")
+
+  @@index([portId])
+  @@index([operatorId])
+  @@map("users")
+}
+
+model Berth {
+  id                Int           @id @default(autoincrement())
+  portId            Int           @map("port_id")
+  code              String        @db.VarChar(30)
+  name              String        @db.VarChar(150)
+  berthType          BerthType          @map("berth_type")
+  authorityType      AuthorityType      @map("authority_type")
+  billingEligibility BillingEligibility @default(PENDING_VERIFICATION) @map("billing_eligibility")
+  legalBasis         String?            @map("legal_basis") @db.VarChar(255)
+  managementEvidence String?            @map("management_evidence") @db.VarChar(255)
+  maxLengthMeters    Decimal?           @map("max_length_meters") @db.Decimal(8, 2)
+  isActive          Boolean       @default(true) @map("is_active")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  port               Port                  @relation(fields: [portId], references: [id], onDelete: Restrict)
+  berthingRecords    BerthingRecord[]
+  dailyReportItems   DailyPortReportItem[]
+  maintenanceTickets MaintenanceTicket[]
+
+  @@unique([portId, code])
+  @@unique([portId, id])
+  @@map("berths")
+}
+
+model ShipOperator {
+  id                 Int                @id @default(autoincrement())
+  name               String             @db.VarChar(200)
+  npwp               String?            @db.VarChar(50)
+  phone              String?            @db.VarChar(50)
+  email              String?            @db.VarChar(150)
+  address            String?            @db.Text
+  operatorProfile    OperatorProfile    @default(REGULAR_SCHEDULED) @map("operator_profile")
+  verificationStatus VerificationStatus @default(PENDING) @map("verification_status")
+  rejectionReason    String?            @map("rejection_reason") @db.Text
+  verifiedAt         DateTime?          @map("verified_at")
+  verifiedById       Int?               @map("verified_by_id")
+  isActive           Boolean            @default(true) @map("is_active")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  verifiedBy User?      @relation("OperatorVerifiedBy", fields: [verifiedById], references: [id], onDelete: Restrict)
+  users      User[]     @relation("OperatorUsers")
+  vessels    Vessel[]
+  documents  Document[]
+  visits     ShipVisit[]
+  invoices   Invoice[]
+  warnings   Warning[]
+
+  @@map("ship_operators")
+}
+
+model Vessel {
+  id                 Int                @id @default(autoincrement())
+  operatorId         Int                @map("operator_id")
+  registrationNumber String             @unique @map("registration_number") @db.VarChar(60)
+  imoNumber          String?            @unique @map("imo_number") @db.VarChar(30)
+  name               String             @db.VarChar(150)
+  flag               String             @default("Indonesia") @db.VarChar(80)
+  grossTonnage       Decimal            @map("gross_tonnage") @db.Decimal(12, 2)
+  shipType           ShipType           @map("ship_type")
+  shippingCategory   ShippingCategory   @map("shipping_category")
+  verificationStatus VerificationStatus @default(PENDING) @map("verification_status")
+  rejectionReason    String?            @map("rejection_reason") @db.Text
+  verifiedAt         DateTime?          @map("verified_at")
+  verifiedById       Int?               @map("verified_by_id")
+  isActive           Boolean            @default(true) @map("is_active")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  operator   ShipOperator @relation(fields: [operatorId], references: [id], onDelete: Restrict)
+  verifiedBy User?        @relation("VesselVerifiedBy", fields: [verifiedById], references: [id], onDelete: Restrict)
+  documents  Document[]
+  visits     ShipVisit[]
+
+  @@index([operatorId])
+  @@map("vessels")
+}
+
+model Document {
+  id                 Int                @id @default(autoincrement())
+  operatorId         Int                @map("operator_id")
+  vesselId           Int?               @map("vessel_id")
+  category           DocumentCategory
+  documentNumber     String?            @map("document_number") @db.VarChar(100)
+  filePath           String             @map("file_path") @db.VarChar(255)
+  fileName           String             @map("file_name") @db.VarChar(255)
+  mimeType           String             @map("mime_type") @db.VarChar(100)
+  uploadedById       Int                @map("uploaded_by_id")
+  verificationStatus VerificationStatus @default(PENDING) @map("verification_status")
+  notes              String?            @db.Text
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  operator   ShipOperator @relation(fields: [operatorId], references: [id], onDelete: Restrict)
+  vessel     Vessel?      @relation(fields: [vesselId], references: [id], onDelete: Restrict)
+  uploadedBy User         @relation("DocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([operatorId])
+  @@index([vesselId])
+  @@map("documents")
+}
+
+// ============================================================================
+// TARIFF MATRIX (Perda Kab. Mimika No. 4 Tahun 2023)
+// ============================================================================
+
+model PortTariff {
+  id               Int              @id @default(autoincrement())
+  tariffCode       String           @unique @map("tariff_code") @db.VarChar(60)
+  serviceCode      ServiceCode      @map("service_code")
+  shippingCategory ShippingCategory @map("shipping_category")
+  shipType         ShipType?        @map("ship_type")
+  activityMode     ActivityMode?    @map("activity_mode")
+  berthType        BerthType?       @map("berth_type")
+  unitType         TariffUnitType   @map("unit_type")
+  currency         Currency         @default(IDR)
+  amount           Decimal          @db.Decimal(14, 4)
+  legalBasis       String           @map("legal_basis") @db.VarChar(255)
+  effectiveFrom    DateTime         @map("effective_from")
+  effectiveTo      DateTime?        @map("effective_to")
+  isActive         Boolean          @default(true) @map("is_active")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  invoiceItems InvoiceItem[]
+
+  @@index([serviceCode, shippingCategory, isActive])
+  @@map("port_tariffs")
+}
+
+// ============================================================================
+// PORT OPERATIONS (Vessel Visits & Berthing Realization)
+// ============================================================================
+
+model ShipVisit {
+  id              Int               @id @default(autoincrement())
+  visitNumber     String            @unique @map("visit_number") @db.VarChar(50)
+  portId          Int               @map("port_id")
+  vesselId        Int               @map("vessel_id")
+  operatorId      Int               @map("operator_id")
+  visitOrigin     VisitOrigin       @default(OPERATOR_REQUEST) @map("visit_origin")
+  activityMode    VisitActivityMode @default(NORMAL) @map("activity_mode")
+  isTransitOnly   Boolean           @default(false) @map("is_transit_only")
+  originPort      String?           @map("origin_port") @db.VarChar(150)
+  destinationPort String?           @map("destination_port") @db.VarChar(150)
+  eta             DateTime
+  etd             DateTime
+  ataAnchorage    DateTime?         @map("ata_anchorage")
+  atdPort         DateTime?         @map("atd_port")
+  status          VisitStatus       @default(REQUESTED)
+  notes           String?           @db.Text
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  port            Port             @relation(fields: [portId], references: [id], onDelete: Restrict)
+  vessel          Vessel           @relation(fields: [vesselId], references: [id], onDelete: Restrict)
+  operator        ShipOperator     @relation(fields: [operatorId], references: [id], onDelete: Restrict)
+  berthingRecords  BerthingRecord[]
+  invoices         Invoice[]
+  dailyReportItems DailyPortReportItem[]
+  cargoRecords     CargoHandlingRecord[]
+  equipmentRentals EquipmentRentalRecord[]
+  utilityReadings  UtilityMeterReading[]
+
+  @@unique([portId, id])
+  @@index([portId, status])
+  @@index([operatorId])
+  @@map("ship_visits")
+}
+
+model BerthingRecord {
+  id              Int           @id @default(autoincrement())
+  portId          Int           @map("port_id")
+  visitId         Int           @map("visit_id")
+  berthId         Int           @map("berth_id")
+  berthCategory   BerthCategory @default(UMUM) @map("berth_category")
+  plannedStartAt  DateTime?     @map("planned_start_at")
+  plannedEndAt    DateTime?     @map("planned_end_at")
+  actualStartAt   DateTime?     @map("actual_start_at")
+  actualEndAt     DateTime?     @map("actual_end_at")
+  calculatedHours Decimal?      @map("calculated_hours") @db.Decimal(10, 2)
+  billableEtmal   Decimal?      @map("billable_etmal") @db.Decimal(10, 2)
+  evidencePhoto   String?       @map("evidence_photo") @db.VarChar(255)
+  isOverstay      Boolean       @default(false) @map("is_overstay")
+  overstayHours   Decimal?      @map("overstay_hours") @db.Decimal(10, 2)
+  recordedById    Int?          @map("recorded_by_id")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  visit      ShipVisit @relation(fields: [portId, visitId], references: [portId, id], onDelete: Restrict)
+  berth      Berth     @relation(fields: [portId, berthId], references: [portId, id], onDelete: Restrict)
+  recordedBy User?     @relation("RecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@index([visitId])
+  @@index([berthId])
+  @@map("berthing_records")
+}
+
+// ============================================================================
+// BILLING, PAYMENTS & IMMUTABLE AUDIT TRAIL
+// ============================================================================
+
+model Invoice {
+  id                   Int                  @id @default(autoincrement())
+  invoiceNumber        String               @unique @map("invoice_number") @db.VarChar(60)
+  ssrdNumber           String?              @unique @map("ssrd_number") @db.VarChar(60)
+  collectionInstrument CollectionInstrument @default(KARCIS) @map("collection_instrument")
+  portId               Int                  @map("port_id")
+  visitId         Int           @map("visit_id")
+  operatorId      Int           @map("operator_id")
+  parentInvoiceId Int?          @map("parent_invoice_id")
+  billingStage    BillingStage  @map("billing_stage")
+  exchangeRateUsd Decimal       @default(16000) @map("exchange_rate_usd") @db.Decimal(12, 2)
+  totalAmountIdr  Decimal       @map("total_amount_idr") @db.Decimal(16, 2)
+  status          InvoiceStatus @default(DRAFT)
+  issuedAt        DateTime?     @map("issued_at")
+  dueDate         DateTime?     @map("due_date")
+  voidReason      String?       @map("void_reason") @db.Text
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  visit         ShipVisit     @relation(fields: [visitId], references: [id], onDelete: Restrict)
+  operator      ShipOperator  @relation(fields: [operatorId], references: [id], onDelete: Restrict)
+  parentInvoice Invoice?      @relation("InvoiceHierarchy", fields: [parentInvoiceId], references: [id], onDelete: Restrict)
+  childInvoices Invoice[]     @relation("InvoiceHierarchy")
+  items         InvoiceItem[]
+  payments      Payment[]
+  warnings      Warning[]
+
+  @@index([portId, status])
+  @@index([visitId, billingStage])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id                   Int            @id @default(autoincrement())
+  invoiceId            Int            @map("invoice_id")
+  tariffId             Int?           @map("tariff_id")
+  serviceCode          ServiceCode    @map("service_code")
+  description          String         @db.VarChar(255)
+  gtSnapshot           Decimal        @map("gt_snapshot") @db.Decimal(12, 2)
+  unitsCharged         Decimal        @map("units_charged") @db.Decimal(10, 2)
+  unitType             TariffUnitType @map("unit_type")
+  tariffAmountSnapshot Decimal        @map("tariff_amount_snapshot") @db.Decimal(14, 4)
+  currency             Currency
+  subtotalOriginal     Decimal        @map("subtotal_original") @db.Decimal(16, 4)
+  subtotalIdr          Decimal        @map("subtotal_idr") @db.Decimal(16, 2)
+  formulaNote          String         @map("formula_note") @db.VarChar(255)
+  createdAt            DateTime       @default(now()) @map("created_at")
+
+  invoice Invoice     @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  tariff  PortTariff? @relation(fields: [tariffId], references: [id], onDelete: Restrict)
+
+  @@index([invoiceId])
+  @@map("invoice_items")
+}
+
+model Payment {
+  id             Int           @id @default(autoincrement())
+  invoiceId      Int           @map("invoice_id")
+  idempotencyKey String        @unique @map("idempotency_key") @db.VarChar(100)
+  amountIdr      Decimal       @map("amount_idr") @db.Decimal(16, 2)
+  method         PaymentMethod
+  referenceNo    String?       @map("reference_no") @db.VarChar(100)
+  proofFilePath  String?       @map("proof_file_path") @db.VarChar(255)
+  paidAt         DateTime      @map("paid_at")
+  isVerified     Boolean       @default(false) @map("is_verified")
+  verifiedById   Int?          @map("verified_by_id")
+  verifiedAt     DateTime?     @map("verified_at")
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  invoice    Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  verifiedBy User?   @relation("VerifiedBy", fields: [verifiedById], references: [id], onDelete: Restrict)
+
+  @@index([invoiceId, isVerified])
+  @@map("payments")
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  actorId    Int?     @map("actor_id")
+  action     String   @db.VarChar(80)
+  entityName String   @map("entity_name") @db.VarChar(80)
+  entityId   String   @map("entity_id") @db.VarChar(80)
+  beforeData Json?    @map("before_data")
+  afterData  Json?    @map("after_data")
+  reason     String?  @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  actor User? @relation("Actor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([entityName, entityId])
+  @@index([actorId])
+  @@map("audit_logs")
+}
+
+// ============================================================================
+// DAILY PORT SHIFT REPORTS, WARNINGS & NOTIFICATIONS (MARS-ALIGNED)
+// ============================================================================
+
+model DailyPortReport {
+  id                  Int               @id @default(autoincrement())
+  portId              Int               @map("port_id")
+  reportDate          DateTime          @map("report_date") @db.Date
+  officerId           Int               @map("officer_id")
+  totalVesselsStaying Int               @default(0) @map("total_vessels_staying")
+  generalNotes        String?           @map("general_notes") @db.Text
+  status              DailyReportStatus @default(SUBMITTED)
+  createdAt           DateTime          @default(now()) @map("created_at")
+  updatedAt           DateTime          @updatedAt @map("updated_at")
+
+  port    Port                  @relation(fields: [portId], references: [id], onDelete: Restrict)
+  officer User                  @relation("ReportOfficer", fields: [officerId], references: [id], onDelete: Restrict)
+  items   DailyPortReportItem[]
+
+  @@index([portId, reportDate])
+  @@map("daily_port_reports")
+}
+
+model DailyPortReportItem {
+  id                         Int      @id @default(autoincrement())
+  reportId                   Int      @map("report_id")
+  portId                     Int      @map("port_id")
+  visitId                    Int?     @map("visit_id")
+  berthId                    Int?     @map("berth_id")
+  vesselNameSnapshot         String   @map("vessel_name_snapshot") @db.VarChar(150)
+  registrationNumberSnapshot String   @map("registration_number_snapshot") @db.VarChar(60)
+  evidencePhoto              String?  @map("evidence_photo") @db.VarChar(255)
+  isAdhoc                    Boolean  @default(false) @map("is_adhoc")
+  notes                      String?  @db.Text
+  createdAt                  DateTime @default(now()) @map("created_at")
+
+  report DailyPortReport @relation(fields: [reportId], references: [id], onDelete: Restrict)
+  visit  ShipVisit?      @relation(fields: [portId, visitId], references: [portId, id], onDelete: Restrict)
+  berth  Berth?          @relation(fields: [portId, berthId], references: [portId, id], onDelete: Restrict)
+
+  @@index([reportId])
+  @@map("daily_port_report_items")
+}
+
+model Warning {
+  id            Int           @id @default(autoincrement())
+  warningNumber String        @unique @map("warning_number") @db.VarChar(60)
+  portId        Int           @map("port_id")
+  operatorId    Int           @map("operator_id")
+  invoiceId     Int           @map("invoice_id")
+  warningLevel  WarningLevel  @map("warning_level")
+  message       String        @db.Text
+  issuedById    Int           @map("issued_by_id")
+  status        WarningStatus @default(SENT)
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  port     Port         @relation(fields: [portId], references: [id], onDelete: Restrict)
+  operator ShipOperator @relation(fields: [operatorId], references: [id], onDelete: Restrict)
+  invoice  Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  issuedBy User         @relation("WarningIssuer", fields: [issuedById], references: [id], onDelete: Restrict)
+
+  @@unique([invoiceId, warningLevel])
+  @@index([portId, status])
+  @@map("warnings")
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  title     String   @db.VarChar(200)
+  message   String   @db.Text
+  type      String   @db.VarChar(50)
+  isRead    Boolean  @default(false) @map("is_read")
+  linkUrl   String?  @map("link_url") @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model Complaint {
+  id             Int             @id @default(autoincrement())
+  ticketNumber   String          @unique @map("ticket_number") @db.VarChar(50)
+  portId         Int             @map("port_id")
+  reporterName   String          @map("reporter_name") @db.VarChar(150)
+  reporterPhone  String?         @map("reporter_phone") @db.VarChar(50)
+  reporterEmail  String?         @map("reporter_email") @db.VarChar(150)
+  category       String          @db.VarChar(80)
+  subject        String          @db.VarChar(200)
+  description    String          @db.Text
+  status         ComplaintStatus @default(OPEN)
+  resolutionNote String?         @map("resolution_note") @db.Text
+  resolvedAt     DateTime?       @map("resolved_at")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  port Port @relation(fields: [portId], references: [id], onDelete: Restrict)
+
+  @@index([portId, status])
+  @@map("complaints")
+}
+
+// ============================================================================
+// PHASE 2: GATE TICKETING (PAS MASUK / MB) & FERRY ROUTES (LAMPIRAN XI)
+// ============================================================================
+
+model GateTicketBook {
+  id               Int                  @id @default(autoincrement())
+  portId           Int                  @map("port_id")
+  bookCode         String               @unique @map("book_code") @db.VarChar(60)
+  ticketCategory   String               @map("ticket_category") @db.VarChar(100)
+  serialStart      Int                  @map("serial_start")
+  serialEnd        Int                  @map("serial_end")
+  nominalPerTicket Decimal              @map("nominal_per_ticket") @db.Decimal(14, 2)
+  status           GateTicketBookStatus @default(STOK)
+  legalBasis       String?              @map("legal_basis") @db.VarChar(255)
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  port      Port                 @relation(fields: [portId], references: [id], onDelete: Restrict)
+  handovers GateWardenHandover[]
+
+  @@unique([portId, id])
+  @@index([portId, status])
+  @@map("gate_ticket_books")
+}
+
+model GateWardenHandover {
+  id                    Int            @id @default(autoincrement())
+  portId                Int            @map("port_id")
+  bookId                Int            @map("book_id")
+  wardenName            String         @map("warden_name") @db.VarChar(120)
+  dispatchedSerialStart Int            @map("dispatched_serial_start")
+  dispatchedSerialEnd   Int            @map("dispatched_serial_end")
+  lastReturnedSerial    Int?           @map("last_returned_serial")
+  soldQty               Int?           @map("sold_qty")
+  expectedAmountIdr     Decimal?       @map("expected_amount_idr") @db.Decimal(16, 2)
+  actualCashSettledIdr  Decimal?       @map("actual_cash_settled_idr") @db.Decimal(16, 2)
+  unmatchedAmountIdr    Decimal?       @map("unmatched_amount_idr") @db.Decimal(16, 2)
+  status                HandoverStatus @default(DISTRIBUTED)
+  notes                 String?        @db.Text
+  dispatchTime          DateTime       @default(now()) @map("dispatch_time")
+  settleTime            DateTime?      @map("settle_time")
+
+  port Port           @relation(fields: [portId], references: [id], onDelete: Restrict)
+  book GateTicketBook @relation(fields: [portId, bookId], references: [portId, id], onDelete: Restrict)
+
+  @@index([portId, status])
+  @@map("gate_warden_handovers")
+}
+
+model FerryRoute {
+  id              Int      @id @default(autoincrement())
+  portId          Int      @map("port_id")
+  destinationName String   @map("destination_name") @db.VarChar(150)
+  distanceMiles   Int      @map("distance_miles")
+  adultFareIdr    Decimal  @map("adult_fare_idr") @db.Decimal(12, 2)
+  childFareIdr    Decimal  @map("child_fare_idr") @db.Decimal(12, 2)
+  infantFareIdr   Decimal  @map("infant_fare_idr") @db.Decimal(12, 2)
+  cargoPerTonIdr  Decimal  @map("cargo_per_ton_idr") @db.Decimal(12, 2)
+  legalBasis      String   @map("legal_basis") @db.VarChar(255)
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  port Port @relation(fields: [portId], references: [id], onDelete: Restrict)
+
+  @@unique([portId, destinationName])
+  @@map("ferry_routes")
+}
+
+// ============================================================================
+// PHASE 2: PORT ASSETS, LEASES (PKS) & MAINTENANCE
+// ============================================================================
+
+model PortAsset {
+  id                 Int                @id @default(autoincrement())
+  portId             Int                @map("port_id")
+  assetCode          String             @unique @map("asset_code") @db.VarChar(60)
+  name               String             @db.VarChar(150)
+  assetType          PortAssetType      @map("asset_type")
+  areaSqm            Decimal            @map("area_sqm") @db.Decimal(10, 2)
+  annualRatePerSqmIdr Decimal           @map("annual_rate_per_sqm_idr") @db.Decimal(14, 2)
+  billingEligibility BillingEligibility @default(PENDING_VERIFICATION) @map("billing_eligibility")
+  status             PortAssetStatus    @default(AVAILABLE)
+  gisCoordinates     String?            @map("gis_coordinates") @db.VarChar(100)
+  legalBasis         String?            @map("legal_basis") @db.VarChar(255)
+  isActive           Boolean            @default(true) @map("is_active")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  port               Port                  @relation(fields: [portId], references: [id], onDelete: Restrict)
+  leases             AssetLease[]
+  maintenanceTickets MaintenanceTicket[]
+  utilityReadings    UtilityMeterReading[]
+
+  @@unique([portId, id])
+  @@index([portId, status])
+  @@map("port_assets")
+}
+
+model AssetLease {
+  id                   Int         @id @default(autoincrement())
+  contractNumber       String      @unique @map("contract_number") @db.VarChar(60)
+  portId               Int         @map("port_id")
+  assetId              Int         @map("asset_id")
+  tenantName           String      @map("tenant_name") @db.VarChar(150)
+  tenantNpwp           String?     @map("tenant_npwp") @db.VarChar(50)
+  tenantPhone          String?     @map("tenant_phone") @db.VarChar(50)
+  startDate            DateTime    @map("start_date") @db.Date
+  endDate              DateTime    @map("end_date") @db.Date
+  totalAnnualAmountIdr Decimal     @map("total_annual_amount_idr") @db.Decimal(16, 2)
+  status               LeaseStatus @default(DRAFT)
+  createdById          Int         @map("created_by_id")
+  createdAt            DateTime    @default(now()) @map("created_at")
+  updatedAt            DateTime    @updatedAt @map("updated_at")
+
+  port      Port                @relation(fields: [portId], references: [id], onDelete: Restrict)
+  asset     PortAsset           @relation(fields: [portId, assetId], references: [portId, id], onDelete: Restrict)
+  createdBy User                @relation("LeaseCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  payments  AssetLeasePayment[]
+
+  @@index([portId, status])
+  @@map("asset_leases")
+}
+
+model AssetLeasePayment {
+  id             Int      @id @default(autoincrement())
+  leaseId        Int      @map("lease_id")
+  idempotencyKey String   @unique @map("idempotency_key") @db.VarChar(100)
+  periodYear     Int      @map("period_year")
+  amountIdr      Decimal  @map("amount_idr") @db.Decimal(16, 2)
+  paidAt         DateTime @map("paid_at")
+  verifiedById   Int      @map("verified_by_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  lease      AssetLease @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  verifiedBy User       @relation("LeasePaymentVerifier", fields: [verifiedById], references: [id], onDelete: Restrict)
+
+  @@index([leaseId, periodYear])
+  @@map("asset_lease_payments")
+}
+
+model MaintenanceTicket {
+  id                 Int                 @id @default(autoincrement())
+  ticketNumber       String              @unique @map("ticket_number") @db.VarChar(60)
+  portId             Int                 @map("port_id")
+  berthId            Int?                @map("berth_id")
+  assetId            Int?                @map("asset_id")
+  severity           MaintenanceSeverity
+  title              String              @db.VarChar(200)
+  description        String              @db.Text
+  evidencePhoto      String?             @map("evidence_photo") @db.VarChar(255)
+  status             MaintenanceStatus   @default(REPORTED)
+  reportedById       Int                 @map("reported_by_id")
+  assignedTechnician String?             @map("assigned_technician") @db.VarChar(150)
+  resolutionNote     String?             @map("resolution_note") @db.Text
+  resolvedAt         DateTime?           @map("resolved_at")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+
+  port       Port       @relation(fields: [portId], references: [id], onDelete: Restrict)
+  berth      Berth?     @relation(fields: [portId, berthId], references: [portId, id], onDelete: Restrict)
+  asset      PortAsset? @relation(fields: [portId, assetId], references: [portId, id], onDelete: Restrict)
+  reportedBy User       @relation("MaintenanceReporter", fields: [reportedById], references: [id], onDelete: Restrict)
+
+  @@index([portId, status])
+  @@map("maintenance_tickets")
+}
+
+// ============================================================================
+// PHASE 2B: CARGO HANDLING, PORT EQUIPMENT & UTILITIES (LAMPIRAN XI B, C, D)
+// ============================================================================
+
+model CargoHandlingRecord {
+  id              Int                  @id @default(autoincrement())
+  recordNumber    String               @unique @map("record_number") @db.VarChar(60)
+  portId          Int                  @map("port_id")
+  visitId         Int?                 @map("visit_id")
+  cargoCategory   CargoCategory        @map("cargo_category")
+  description     String               @db.VarChar(200)
+  quantity        Decimal              @db.Decimal(12, 2)
+  unitLabel       String               @map("unit_label") @db.VarChar(30)
+  storageLocation StorageLocationType? @map("storage_location")
+  durationDays    Int                  @default(1) @map("duration_days")
+  ratePerUnitIdr  Decimal              @map("rate_per_unit_idr") @db.Decimal(14, 2)
+  totalAmountIdr  Decimal              @map("total_amount_idr") @db.Decimal(16, 2)
+  paymentStatus   ChargePaymentStatus  @default(UNPAID) @map("payment_status")
+  idempotencyKey  String?              @unique @map("idempotency_key") @db.VarChar(100)
+  paidAt          DateTime?            @map("paid_at")
+  recordedById    Int                  @map("recorded_by_id")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  port       Port       @relation(fields: [portId], references: [id], onDelete: Restrict)
+  visit      ShipVisit? @relation(fields: [portId, visitId], references: [portId, id], onDelete: Restrict)
+  recordedBy User       @relation("CargoRecorder", fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@index([portId, paymentStatus])
+  @@map("cargo_handling_records")
+}
+
+model EquipmentRentalRecord {
+  id             Int                 @id @default(autoincrement())
+  rentalNumber   String              @unique @map("rental_number") @db.VarChar(60)
+  portId         Int                 @map("port_id")
+  visitId        Int?                @map("visit_id")
+  equipmentType  PortEquipmentType   @map("equipment_type")
+  capacityLabel  String              @map("capacity_label") @db.VarChar(80)
+  unitCount      Int                 @default(1) @map("unit_count")
+  durationHours  Decimal             @map("duration_hours") @db.Decimal(10, 2)
+  ratePerHourIdr Decimal             @map("rate_per_hour_idr") @db.Decimal(14, 2)
+  totalAmountIdr Decimal             @map("total_amount_idr") @db.Decimal(16, 2)
+  paymentStatus  ChargePaymentStatus @default(UNPAID) @map("payment_status")
+  idempotencyKey String?             @unique @map("idempotency_key") @db.VarChar(100)
+  paidAt         DateTime?           @map("paid_at")
+  recordedById   Int                 @map("recorded_by_id")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+
+  port       Port       @relation(fields: [portId], references: [id], onDelete: Restrict)
+  visit      ShipVisit? @relation(fields: [portId, visitId], references: [portId, id], onDelete: Restrict)
+  recordedBy User       @relation("EquipmentRecorder", fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@index([portId, paymentStatus])
+  @@map("equipment_rental_records")
+}
+
+model UtilityMeterReading {
+  id             Int                 @id @default(autoincrement())
+  readingNumber  String              @unique @map("reading_number") @db.VarChar(60)
+  portId         Int                 @map("port_id")
+  visitId        Int?                @map("visit_id")
+  assetId        Int?                @map("asset_id")
+  utilityType    UtilityType         @map("utility_type")
+  meterStart     Decimal             @map("meter_start") @db.Decimal(14, 2)
+  meterEnd       Decimal             @map("meter_end") @db.Decimal(14, 2)
+  volumeConsumed Decimal             @map("volume_consumed") @db.Decimal(14, 2)
+  unitLabel      String              @map("unit_label") @db.VarChar(20)
+  ratePerUnitIdr Decimal             @map("rate_per_unit_idr") @db.Decimal(14, 2)
+  totalAmountIdr Decimal             @map("total_amount_idr") @db.Decimal(16, 2)
+  paymentStatus  ChargePaymentStatus @default(UNPAID) @map("payment_status")
+  idempotencyKey String?             @unique @map("idempotency_key") @db.VarChar(100)
+  paidAt         DateTime?           @map("paid_at")
+  recordedById   Int                 @map("recorded_by_id")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+
+  port       Port       @relation(fields: [portId], references: [id], onDelete: Restrict)
+  visit      ShipVisit? @relation(fields: [portId, visitId], references: [portId, id], onDelete: Restrict)
+  asset      PortAsset? @relation(fields: [portId, assetId], references: [portId, id], onDelete: Restrict)
+  recordedBy User       @relation("UtilityRecorder", fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@index([portId, paymentStatus])
+  @@map("utility_meter_readings")
+}

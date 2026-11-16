@@ -1,0 +1,182 @@
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Param,
+  ParseIntPipe,
+  Post,
+  Req,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
+import { BillingStage, UserRole } from '@prisma/client';
+import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PortScopeGuard, ScopeFilter } from '../../common/guards/port-scope.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { BillingService } from './billing.service';
+import {
+  BankPaymentWebhookDto,
+  GenerateBillingDto,
+  RecordPaymentDto,
+  VoidInvoiceDto,
+} from './dto/billing.dto';
+
+@ApiTags('Billing, e-SKRD & Payments')
+@Controller('billing')
+export class BillingController {
+  constructor(private readonly billingService: BillingService) {}
+
+  @Post('webhooks/bank-payment')
+  handleBankWebhook(
+    @Body() dto: BankPaymentWebhookDto,
+    @Headers('x-porta-signature') signature?: string,
+  ) {
+    return this.billingService.handleBankWebhook(dto, signature);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
+  @Get('invoices')
+  findInvoices(@Req() req: { portScope: ScopeFilter }) {
+    return this.billingService.findInvoices(req.portScope);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
+  @Get('invoices/:id/print-payload')
+  getPrintPayload(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.billingService.getPrintPayload(id, req.portScope);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
+  @Post('visits/:visitId/estimate')
+  generateEstimate(
+    @Param('visitId', ParseIntPipe) visitId: number,
+    @Body() dto: GenerateBillingDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.billingService.generateForVisit(
+      visitId,
+      BillingStage.ESTIMATE,
+      dto,
+      user,
+      req.portScope,
+    );
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
+  @Post('visits/:visitId/advance-skrd')
+  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
+  generateAdvanceSkrd(
+    @Param('visitId', ParseIntPipe) visitId: number,
+    @Body() dto: GenerateBillingDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.billingService.generateForVisit(
+      visitId,
+      BillingStage.ADVANCE_SKRD,
+      dto,
+      user,
+      req.portScope,
+    );
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
+  @Post('visits/:visitId/final-skrd')
+  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
+  generateFinalSkrd(
+    @Param('visitId', ParseIntPipe) visitId: number,
+    @Body() dto: GenerateBillingDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.billingService.generateForVisit(
+      visitId,
+      BillingStage.FINAL_SKRD,
+      dto,
+      user,
+      req.portScope,
+    );
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
+  @Post('invoices/:id/issue')
+  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
+  issueInvoice(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.billingService.issueInvoice(id, user, req.portScope);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
+  @Post('invoices/:id/void')
+  @Roles(UserRole.SUPERADMIN, UserRole.BENDAHARA)
+  voidInvoice(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: VoidInvoiceDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.billingService.voidInvoice(id, dto, user, req.portScope);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
+  @Post('invoices/:id/payments')
+  @Roles(UserRole.SUPERADMIN, UserRole.BENDAHARA)
+  recordPayment(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RecordPaymentDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.billingService.recordPayment(id, dto, user, req.portScope);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
+  @Post('invoices/:id/submit-payment')
+  @Roles(UserRole.OPERATOR_KAPAL, UserRole.SUPERADMIN)
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file'))
+  submitPaymentProof(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RecordPaymentDto,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.billingService.submitPaymentProof(id, dto, file, user, req.portScope);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
+  @Post('payments/:paymentId/verify')
+  @Roles(UserRole.SUPERADMIN, UserRole.BENDAHARA)
+  verifyPayment(
+    @Param('paymentId', ParseIntPipe) paymentId: number,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.billingService.verifyPayment(paymentId, user, req.portScope);
+  }
+}
+
