@@ -37,6 +37,7 @@ describe('PORTA End-to-End Flow & Security Guardrails (e2e)', () => {
   let createdCargoId = 0;
   let createdEquipmentId = 0;
   let createdUtilityId = 0;
+  let createdManifestId = 0;
   let pomakoPortId = 0;
   let pemdaBerthId = 0;
   let uppBerthId = 0;
@@ -102,6 +103,9 @@ describe('PORTA End-to-End Flow & Security Guardrails (e2e)', () => {
     }
     if (createdUtilityId) {
       await prisma.utilityMeterReading.delete({ where: { id: createdUtilityId } });
+    }
+    if (createdManifestId) {
+      await prisma.vesselManifest.delete({ where: { id: createdManifestId } });
     }
     if (createdVisitId) {
       const invoices = await prisma.invoice.findMany({ where: { visitId: createdVisitId } });
@@ -669,6 +673,46 @@ describe('PORTA End-to-End Flow & Security Guardrails (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
     expect(gisRes.body.berths.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('9. Records Vessel Manifest, Passenger/Vehicle Log & Terminal Passenger Fees (Lampiran XI D.2)', async () => {
+    const manifestRes = await request(app.getHttpServer())
+      .post('/api/v1/gate-ticketing/manifests')
+      .set('Authorization', `Bearer ${petugasToken}`)
+      .send({
+        portId: pomakoPortId,
+        visitId: createdVisitId,
+        terminalClass: 'KELAS_B',
+        adultCount: 10,
+        childCount: 5,
+        infantCount: 2,
+        greeterCount: 3,
+        vehicleCount: 4,
+        cargoTons: 2.5,
+      })
+      .expect(201);
+
+    createdManifestId = manifestRes.body.id;
+    // Kelas B: (10 + 5) * 3000 + 3 * 3000 = 54.000
+    expect(Number(manifestRes.body.terminalFeeIdr)).toBe(54000);
+
+    // Duplicate manifest for same visit -> 409 Conflict
+    await request(app.getHttpServer())
+      .post('/api/v1/gate-ticketing/manifests')
+      .set('Authorization', `Bearer ${petugasToken}`)
+      .send({
+        portId: pomakoPortId,
+        visitId: createdVisitId,
+        adultCount: 1,
+      })
+      .expect(409);
+
+    const summaryRes = await request(app.getHttpServer())
+      .get('/api/v1/reports/revenue-summary')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(summaryRes.body.passengerTraffic.totalPassengers).toBeGreaterThanOrEqual(17);
+    expect(summaryRes.body.passengerTraffic.totalVehicles).toBeGreaterThanOrEqual(4);
   });
 });
 

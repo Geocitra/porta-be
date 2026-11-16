@@ -249,6 +249,12 @@ enum ChargePaymentStatus {
   VOID
 }
 
+enum TerminalClass {
+  KELAS_A
+  KELAS_B
+  KELAS_C
+}
+
 // ============================================================================
 // MASTER DATA, ONBOARDING & ACCESS CONTROL
 // ============================================================================
@@ -277,6 +283,7 @@ model Port {
   cargoRecords       CargoHandlingRecord[]
   equipmentRentals   EquipmentRentalRecord[]
   utilityReadings    UtilityMeterReading[]
+  manifests          VesselManifest[]
 
   @@map("ports")
 }
@@ -310,7 +317,8 @@ model User {
   reportedMaint      MaintenanceTicket[]   @relation("MaintenanceReporter")
   recordedCargos     CargoHandlingRecord[] @relation("CargoRecorder")
   recordedEquipments EquipmentRentalRecord[] @relation("EquipmentRecorder")
-  recordedUtilities  UtilityMeterReading[] @relation("UtilityRecorder")
+  recordedUtilities  UtilityMeterReading[]   @relation("UtilityRecorder")
+  recordedManifests  VesselManifest[]        @relation("ManifestRecorder")
 
   @@index([portId])
   @@index([operatorId])
@@ -481,6 +489,7 @@ model ShipVisit {
   cargoRecords     CargoHandlingRecord[]
   equipmentRentals EquipmentRentalRecord[]
   utilityReadings  UtilityMeterReading[]
+  manifests        VesselManifest[]
 
   @@unique([portId, id])
   @@index([portId, status])
@@ -782,10 +791,40 @@ model FerryRoute {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  port Port @relation(fields: [portId], references: [id], onDelete: Restrict)
+  port      Port             @relation(fields: [portId], references: [id], onDelete: Restrict)
+  manifests VesselManifest[]
 
+  @@unique([portId, id])
   @@unique([portId, destinationName])
   @@map("ferry_routes")
+}
+
+model VesselManifest {
+  id             Int           @id @default(autoincrement())
+  manifestNumber String        @unique @map("manifest_number") @db.VarChar(60)
+  portId         Int           @map("port_id")
+  visitId        Int           @unique @map("visit_id")
+  ferryRouteId   Int?          @map("ferry_route_id")
+  terminalClass  TerminalClass @default(KELAS_B) @map("terminal_class")
+  adultCount     Int           @default(0) @map("adult_count")
+  childCount     Int           @default(0) @map("child_count")
+  infantCount    Int           @default(0) @map("infant_count")
+  greeterCount   Int           @default(0) @map("greeter_count")
+  vehicleCount   Int           @default(0) @map("vehicle_count")
+  cargoTons      Decimal       @default(0) @map("cargo_tons") @db.Decimal(10, 2)
+  terminalFeeIdr Decimal       @map("terminal_fee_idr") @db.Decimal(16, 2)
+  notes          String?       @db.Text
+  recordedById   Int           @map("recorded_by_id")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  port       Port        @relation(fields: [portId], references: [id], onDelete: Restrict)
+  visit      ShipVisit   @relation(fields: [portId, visitId], references: [portId, id], onDelete: Restrict)
+  ferryRoute FerryRoute? @relation(fields: [portId, ferryRouteId], references: [portId, id], onDelete: Restrict)
+  recordedBy User        @relation("ManifestRecorder", fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@index([portId])
+  @@map("vessel_manifests")
 }
 
 // ============================================================================

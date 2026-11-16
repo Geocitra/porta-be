@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { TerminalClass } from '@prisma/client';
+import { IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export class CreateGateTicketBookDto {
   @ApiProperty({ example: 1 })
@@ -107,5 +108,65 @@ export class CreateFerryRouteDto {
   @IsString()
   @IsNotEmpty()
   legalBasis!: string;
+}
+
+export class CreateVesselManifestDto {
+  @ApiProperty({ example: 1 })
+  @IsInt()
+  portId!: number;
+
+  @ApiProperty({ example: 1 })
+  @IsInt()
+  visitId!: number;
+
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional()
+  @IsInt()
+  ferryRouteId?: number;
+
+  @ApiPropertyOptional({ enum: TerminalClass, default: TerminalClass.KELAS_B })
+  @IsOptional()
+  @IsEnum(TerminalClass)
+  terminalClass?: TerminalClass;
+
+  @ApiProperty({ example: 45 })
+  @IsInt()
+  @Min(0)
+  adultCount!: number;
+
+  @ApiPropertyOptional({ default: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  childCount?: number;
+
+  @ApiPropertyOptional({ default: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  infantCount?: number;
+
+  @ApiPropertyOptional({ default: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  greeterCount?: number;
+
+  @ApiPropertyOptional({ default: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  vehicleCount?: number;
+
+  @ApiPropertyOptional({ default: 0 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  cargoTons?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  notes?: string;
 }
 

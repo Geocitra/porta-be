@@ -20,6 +20,7 @@ import {
   CloseGateHandoverDto,
   CreateFerryRouteDto,
   CreateGateTicketBookDto,
+  CreateVesselManifestDto,
   OpenGateHandoverDto,
 } from './dto/gate-ticketing.dto';
 import { GateTicketingService } from './gate-ticketing.service';
@@ -81,6 +82,27 @@ export class GateTicketingController {
   @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
   createFerryRoute(@Body() dto: CreateFerryRouteDto) {
     return this.gateTicketingService.createFerryRoute(dto);
+  }
+
+  @Get('manifests')
+  @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+    UserRole.BENDAHARA,
+    UserRole.DISHUB_EKSEKUTIF,
+  )
+  listManifests(@Req() req: { portScope: ScopeFilter }) {
+    return this.gateTicketingService.listManifests(req.portScope);
+  }
+
+  @Post('manifests')
+  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.PETUGAS_DERMAGA)
+  createManifest(
+    @Body() dto: CreateVesselManifestDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.gateTicketingService.createManifest(dto, actor);
   }
 }
 

@@ -26,6 +26,7 @@ export class ReportsService {
       cargoPaid,
       equipmentPaid,
       utilityPaid,
+      manifestAgg,
       outstandingInvoices,
       unbilledVisitsCount,
     ] = await Promise.all([
@@ -64,6 +65,16 @@ export class ReportsService {
       this.prisma.utilityMeterReading.aggregate({
         where: { ...portFilter, paymentStatus: ChargePaymentStatus.PAID },
         _sum: { totalAmountIdr: true },
+      }),
+      this.prisma.vesselManifest.aggregate({
+        where: portFilter,
+        _sum: {
+          adultCount: true,
+          childCount: true,
+          infantCount: true,
+          vehicleCount: true,
+          terminalFeeIdr: true,
+        },
       }),
       this.prisma.invoice.findMany({
         where: {
@@ -144,6 +155,14 @@ export class ReportsService {
       outstandingReceivablesIdr,
       outstandingInvoiceCount: outstandingInvoices.length,
       unbilledDepartedVisitsCount: unbilledVisitsCount,
+      passengerTraffic: {
+        totalPassengers:
+          (manifestAgg._sum.adultCount ?? 0) +
+          (manifestAgg._sum.childCount ?? 0) +
+          (manifestAgg._sum.infantCount ?? 0),
+        totalVehicles: manifestAgg._sum.vehicleCount ?? 0,
+        terminalPassengerFeeIdr: DecimalUtil.toNumber(manifestAgg._sum.terminalFeeIdr),
+      },
     };
   }
 

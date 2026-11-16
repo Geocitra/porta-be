@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { GateTicketBookStatus, HandoverStatus } from '@prisma/client';
+import { GateTicketBookStatus, HandoverStatus, TerminalClass } from '@prisma/client';
 import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ScopeFilter } from '../../common/guards/port-scope.guard';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -15,6 +15,7 @@ import {
   CloseGateHandoverDto,
   CreateFerryRouteDto,
   CreateGateTicketBookDto,
+  CreateVesselManifestDto,
   OpenGateHandoverDto,
 } from './dto/gate-ticketing.dto';
 
@@ -196,6 +197,93 @@ export class GateTicketingService {
 
   createFerryRoute(dto: CreateFerryRouteDto) {
     return this.prisma.ferryRoute.create({ data: dto });
+  }
+
+  listManifests(scope: ScopeFilter) {
+    return this.prisma.vesselManifest.findMany({
+      where: { ...(scope.portId ? { portId: scope.portId } : {}) },
+      include: {
+        visit: { select: { id: true, visitNumber: true, vessel: { select: { name: true } } } },
+        ferryRoute: { select: { id: true, destinationName: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async createManifest(dto: CreateVesselManifestDto, actor: AuthenticatedUser) {
+    const visit = await this.prisma.shipVisit.findUnique({ where: { id: dto.visitId } });
+    if (!visit || visit.portId !== dto.portId) {
+      throw new BadRequestException(`Visit #${dto.visitId} does not belong to port #${dto.portId}`);
+    }
+
+    if (dto.ferryRouteId) {
+      const route = await this.prisma.ferryRoute.findUnique({ where: { id: dto.ferryRouteId } });
+      if (!route || route.portId !== dto.portId) {
+        throw new BadRequestException(
+          `FerryRoute #${dto.ferryRouteId} does not belong to port #${dto.portId}`,
+        );
+      }
+    }
+
+    const existing = await this.prisma.vesselManifest.findUnique({
+      where: { visitId: dto.visitId },
+    });
+    if (existing) {
+      throw new ConflictException(`Manifest already exists for visit #${dto.visitId}`);
+    }
+
+    // Perda Mimika 4/2023 Lampiran XI D.2: Terminal Penumpang Kelas A/B/C
+    const tClass = dto.terminalClass ?? TerminalClass.KELAS_B;
+    const departureFeeMap: Record<TerminalClass, number> = {
+      [TerminalClass.KELAS_A]: 4000,
+      [TerminalClass.KELAS_B]: 3000,
+      [TerminalClass.KELAS_C]: 2000,
+    };
+    const greeterFeeMap: Record<TerminalClass, number> = {
+      [TerminalClass.KELAS_A]: 3000,
+      [TerminalClass.KELAS_B]: 3000,
+      [TerminalClass.KELAS_C]: 2000,
+    };
+
+    const departingPassengers = dto.adultCount + (dto.childCount ?? 0);
+    const greeters = dto.greeterCount ?? 0;
+    const terminalFeeIdr = DecimalUtil.roundIdr(
+      departingPassengers * departureFeeMap[tClass] + greeters * greeterFeeMap[tClass],
+    );
+
+    const manifestNumber = `MNF-${dto.portId}-${Date.now()}`;
+
+    return this.prisma.$transaction(async (tx) => {
+      const manifest = await tx.vesselManifest.create({
+        data: {
+          manifestNumber,
+          portId: dto.portId,
+          visitId: dto.visitId,
+          ferryRouteId: dto.ferryRouteId ?? null,
+          terminalClass: tClass,
+          adultCount: dto.adultCount,
+          childCount: dto.childCount ?? 0,
+          infantCount: dto.infantCount ?? 0,
+          greeterCount: greeters,
+          vehicleCount: dto.vehicleCount ?? 0,
+          cargoTons: dto.cargoTons ?? 0,
+          terminalFeeIdr,
+          notes: dto.notes,
+          recordedById: actor.id,
+        },
+      });
+
+      await this.auditLog.record({
+        actorId: actor.id,
+        action: 'VESSEL_MANIFEST_CREATED',
+        entityName: 'vessel_manifests',
+        entityId: manifest.id,
+        afterData: manifest,
+        tx,
+      });
+
+      return manifest;
+    });
   }
 }
 
