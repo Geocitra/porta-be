@@ -84,6 +84,30 @@ export class BillingService {
         visit: { include: { vessel: true } },
         items: true,
         payments: true,
+        adjustments: true,
+        warnings: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  findAdjustments(scope: ScopeFilter) {
+    return this.prisma.billingAdjustment.findMany({
+      where: {
+        ...(scope.portId ? { portId: scope.portId } : {}),
+        ...(scope.operatorId
+          ? { invoice: { operatorId: scope.operatorId } }
+          : {}),
+      },
+      include: {
+        invoice: {
+          include: {
+            visit: { include: { vessel: true } },
+          },
+        },
+        requestedBy: {
+          select: { id: true, fullName: true, email: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
