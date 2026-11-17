@@ -5,6 +5,7 @@ import {
   Param,
   ParseEnumPipe,
   ParseIntPipe,
+  Patch,
   Post,
   Query,
   Req,
@@ -23,6 +24,8 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import {
   CreateOperatorDto,
   CreateVesselDto,
+  UpdateOperatorDto,
+  UpdateVesselDto,
   UploadDocumentDto,
   VerifyEntityDto,
 } from './dto/vessels.dto';
@@ -36,6 +39,14 @@ export class VesselsController {
   constructor(private readonly vesselsService: VesselsService) {}
 
   @Get('operators')
+  @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+    UserRole.BENDAHARA,
+    UserRole.DISHUB_EKSEKUTIF,
+    UserRole.OPERATOR_KAPAL,
+  )
   findOperators(@Req() req: { portScope: ScopeFilter }) {
     return this.vesselsService.findOperators(req.portScope);
   }
@@ -46,8 +57,17 @@ export class VesselsController {
     return this.vesselsService.createOperator(dto);
   }
 
-  @Post('operators/:id/verify')
+  @Patch('operators/:id')
   @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  updateOperator(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateOperatorDto,
+  ) {
+    return this.vesselsService.updateOperator(id, dto);
+  }
+
+  @Post('operators/:id/verify')
+  @Roles(UserRole.ADMIN_PELABUHAN)
   verifyOperator(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: VerifyEntityDto,
@@ -57,6 +77,12 @@ export class VesselsController {
   }
 
   @Post('operators/:id/documents')
+  @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+    UserRole.OPERATOR_KAPAL,
+  )
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   uploadOperatorDocument(
@@ -70,6 +96,14 @@ export class VesselsController {
   }
 
   @Get()
+  @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+    UserRole.BENDAHARA,
+    UserRole.DISHUB_EKSEKUTIF,
+    UserRole.OPERATOR_KAPAL,
+  )
   @ApiQuery({ name: 'vesselCategory', enum: VesselCategory, required: false })
   findVessels(
     @Req() req: { portScope: ScopeFilter },
@@ -90,8 +124,17 @@ export class VesselsController {
     return this.vesselsService.createVessel(dto, req.portScope);
   }
 
-  @Post(':id/verify')
+  @Patch(':id')
   @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  updateVessel(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateVesselDto,
+  ) {
+    return this.vesselsService.updateVessel(id, dto);
+  }
+
+  @Post(':id/verify')
+  @Roles(UserRole.ADMIN_PELABUHAN)
   verifyVessel(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: VerifyEntityDto,
@@ -101,6 +144,12 @@ export class VesselsController {
   }
 
   @Post(':id/documents')
+  @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+    UserRole.OPERATOR_KAPAL,
+  )
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   uploadVesselDocument(

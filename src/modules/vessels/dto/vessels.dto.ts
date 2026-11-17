@@ -8,6 +8,7 @@ import {
   VesselCategory,
 } from '@prisma/client';
 import {
+  IsBoolean,
   IsEmail,
   IsEnum,
   IsInt,
@@ -130,4 +131,109 @@ export class VerifyEntityDto {
   @IsOptional()
   @IsString()
   rejectionReason?: string;
+}
+
+export class UpdateOperatorDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  name?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  npwp?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @ApiPropertyOptional({ enum: OperatorProfile })
+  @IsOptional()
+  @IsEnum(OperatorProfile)
+  operatorProfile?: OperatorProfile;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+export class UpdateVesselDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  operatorId?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  registrationNumber?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  imoNumber?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  name?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  flag?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  grossTonnage?: number;
+
+  @ApiPropertyOptional({ enum: ShipType })
+  @IsOptional()
+  @IsEnum(ShipType)
+  shipType?: ShipType;
+
+  @ApiPropertyOptional({ enum: VesselCategory })
+  @IsOptional()
+  @IsEnum(VesselCategory)
+  vesselCategory?: VesselCategory;
+
+  @ApiPropertyOptional({ enum: ShippingCategory })
+  @IsOptional()
+  @IsEnum(ShippingCategory)
+  shippingCategory?: ShippingCategory;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  lengthMeters?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0.5)
+  draftMeters?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }

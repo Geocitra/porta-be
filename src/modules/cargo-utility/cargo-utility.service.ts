@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ChargePaymentStatus, VesselCategory } from '@prisma/client';
+import { ChargePaymentStatus, LeaseStatus, VesselCategory } from '@prisma/client';
 import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ScopeFilter } from '../../common/guards/port-scope.guard';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -25,6 +25,45 @@ export class CargoUtilityService {
     private readonly prisma: PrismaService,
     private readonly auditLog: AuditLogService,
   ) {}
+
+  async listUtilities(scope: ScopeFilter) {
+    if (scope.tenantId) {
+      const tenantLeases = await this.prisma.assetLease.findMany({
+        where: {
+          tenantId: scope.tenantId,
+          status: { in: [LeaseStatus.ACTIVE, LeaseStatus.EXPIRED] },
+        },
+        select: { assetId: true, startDate: true, endDate: true },
+      });
+      if (tenantLeases.length === 0) return [];
+
+      return this.prisma.utilityMeterReading.findMany({
+        where: {
+          OR: tenantLeases.map((lease) => {
+            const endOfDay = new Date(lease.endDate);
+            endOfDay.setUTCHours(23, 59, 59, 999);
+            return {
+              assetId: lease.assetId,
+              createdAt: {
+                gte: lease.startDate,
+                lte: endOfDay,
+              },
+            };
+          }),
+        },
+        include: { asset: true },
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+
+    return this.prisma.utilityMeterReading.findMany({
+      where: {
+        ...(scope.portId ? { portId: scope.portId } : {}),
+      },
+      include: { asset: true },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
 
   async createCargoRecord(dto: CreateCargoRecordDto, actor: AuthenticatedUser) {
     const visit = await this.assertVisitBelongsToPort(dto.portId, dto.visitId);

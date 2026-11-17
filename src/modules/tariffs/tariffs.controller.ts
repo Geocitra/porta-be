@@ -43,13 +43,13 @@ export class TariffsController {
   }
 
   @Post()
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.SUPERADMIN)
   create(@Body() dto: CreateTariffDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.tariffsService.create(dto, actor);
   }
 
   @Patch(':id/deactivate')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.SUPERADMIN)
   deactivate(@Param('id', ParseIntPipe) id: number, @CurrentUser() actor: AuthenticatedUser) {
     return this.tariffsService.deactivate(id, actor);
   }

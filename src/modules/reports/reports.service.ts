@@ -204,6 +204,18 @@ export class ReportsService {
     };
   }
 
+  async getAuditLogs() {
+    return this.prisma.auditLog.findMany({
+      take: 100,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        actor: {
+          select: { id: true, email: true, fullName: true, role: true },
+        },
+      },
+    });
+  }
+
   async getUnbilledDepartedVisits(scope: ScopeFilter) {
     return this.prisma.shipVisit.findMany({
       where: {

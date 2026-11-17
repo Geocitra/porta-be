@@ -6,7 +6,12 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PortScopeGuard, ScopeFilter } from '../../common/guards/port-scope.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { CreateUserDto, UpdateUserStatusDto } from './dto/users.dto';
+import {
+  CreateUserDto,
+  ResetUserPasswordDto,
+  UpdateUserDto,
+  UpdateUserStatusDto,
+} from './dto/users.dto';
 import { UsersService } from './users.service';
 
 @ApiTags('Users Management')
@@ -27,6 +32,16 @@ export class UsersController {
     return this.usersService.createUser(dto, actor);
   }
 
+  @Patch(':id')
+  updateUser(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateUserDto,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.usersService.updateUser(id, dto, actor, req.portScope);
+  }
+
   @Patch(':id/status')
   updateStatus(
     @Param('id', ParseIntPipe) id: number,
@@ -36,5 +51,14 @@ export class UsersController {
   ) {
     return this.usersService.updateStatus(id, dto, actor, req.portScope);
   }
-}
 
+  @Patch(':id/reset-password')
+  resetPassword(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ResetUserPasswordDto,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.usersService.resetPassword(id, dto, actor, req.portScope);
+  }
+}

@@ -1,7 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { BillingEligibility, PortAssetType } from '@prisma/client';
 import {
+  BillingEligibility,
+  DocumentCategory,
+  PortAssetStatus,
+  PortAssetType,
+  VerificationStatus,
+} from '@prisma/client';
+import {
+  IsBoolean,
   IsDateString,
+  IsEmail,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -64,6 +72,11 @@ export class CreateAssetLeaseDto {
   @IsInt()
   assetId!: number;
 
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional()
+  @IsInt()
+  tenantId?: number;
+
   @ApiProperty({ example: 'CV Mimika Niaga' })
   @IsString()
   @IsNotEmpty()
@@ -88,6 +101,54 @@ export class CreateAssetLeaseDto {
   endDate!: string;
 }
 
+export class RequestAssetLeaseDto {
+  @ApiProperty({ example: 1 })
+  @IsInt()
+  assetId!: number;
+
+  @ApiProperty({ example: '2026-01-01' })
+  @IsDateString()
+  startDate!: string;
+
+  @ApiProperty({ example: '2026-12-31' })
+  @IsDateString()
+  endDate!: string;
+}
+
+export class VerifyTenantDto {
+  @ApiProperty({ enum: [VerificationStatus.VERIFIED, VerificationStatus.REJECTED] })
+  @IsEnum(VerificationStatus)
+  verificationStatus!: VerificationStatus;
+
+  @ApiPropertyOptional({ example: 'Dokumen NIB/NPWP sesuai dan valid.' })
+  @IsOptional()
+  @IsString()
+  rejectionReason?: string;
+}
+
+export class RejectAssetLeaseDto {
+  @ApiProperty({ example: 'Aset sedang dalam agenda pemeliharaan berkala.' })
+  @IsString()
+  @IsNotEmpty()
+  rejectionReason!: string;
+}
+
+export class UploadTenantDocumentDto {
+  @ApiProperty({ enum: DocumentCategory })
+  @IsEnum(DocumentCategory)
+  category!: DocumentCategory;
+
+  @ApiPropertyOptional({ example: 'NIB-912010293847' })
+  @IsOptional()
+  @IsString()
+  documentNumber?: string;
+
+  @ApiPropertyOptional({ example: 'Dokumen legalitas NIB usaha' })
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
 export class RecordLeasePaymentDto {
   @ApiProperty({ example: 'LEASE-PAY-2026-001' })
   @IsString()
@@ -107,5 +168,120 @@ export class RecordLeasePaymentDto {
   @ApiProperty({ example: '2026-11-16T10:00:00.000Z' })
   @IsDateString()
   paidAt!: string;
+}
+
+export class CreateMasterTenantDto {
+  @ApiProperty({ example: 'CV Mimika Berkah' })
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  npwp?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  nib?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  address?: string;
+}
+
+export class UpdateMasterTenantDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  name?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  npwp?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  nib?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+export class UpdatePortAssetDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  name?: string;
+
+  @ApiPropertyOptional({ enum: PortAssetType })
+  @IsOptional()
+  @IsEnum(PortAssetType)
+  assetType?: PortAssetType;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  areaSqm?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  annualRatePerSqmIdr?: number;
+
+  @ApiPropertyOptional({ enum: BillingEligibility })
+  @IsOptional()
+  @IsEnum(BillingEligibility)
+  billingEligibility?: BillingEligibility;
+
+  @ApiPropertyOptional({ enum: PortAssetStatus })
+  @IsOptional()
+  @IsEnum(PortAssetStatus)
+  status?: PortAssetStatus;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  gisCoordinates?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  legalBasis?: string;
 }
 

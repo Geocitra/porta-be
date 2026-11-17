@@ -13,6 +13,8 @@ import { StorageService, UploadedFilePayload } from '../../common/utils/storage.
 import {
   CreateOperatorDto,
   CreateVesselDto,
+  UpdateOperatorDto,
+  UpdateVesselDto,
   UploadDocumentDto,
   VerifyEntityDto,
 } from './dto/vessels.dto';
@@ -42,6 +44,16 @@ export class VesselsService {
         ...dto,
         verificationStatus: VerificationStatus.VERIFIED, // Created directly by Port Staff
       },
+    });
+  }
+
+  async updateOperator(operatorId: number, dto: UpdateOperatorDto) {
+    const existing = await this.prisma.shipOperator.findUnique({ where: { id: operatorId } });
+    if (!existing) throw new NotFoundException(`Operator #${operatorId} not found`);
+
+    return this.prisma.shipOperator.update({
+      where: { id: operatorId },
+      data: dto,
     });
   }
 
@@ -125,6 +137,22 @@ export class VesselsService {
         verificationStatus: scope.operatorId
           ? VerificationStatus.PENDING
           : VerificationStatus.VERIFIED,
+      },
+    });
+  }
+
+  async updateVessel(vesselId: number, dto: UpdateVesselDto) {
+    const existing = await this.prisma.vessel.findUnique({ where: { id: vesselId } });
+    if (!existing) throw new NotFoundException(`Vessel #${vesselId} not found`);
+
+    return this.prisma.vessel.update({
+      where: { id: vesselId },
+      data: dto,
+      include: {
+        operator: {
+          select: { id: true, name: true, operatorProfile: true, verificationStatus: true },
+        },
+        documents: true,
       },
     });
   }

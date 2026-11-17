@@ -11,6 +11,7 @@ import { DailyReportsModule } from './modules/daily-reports/daily-reports.module
 import { GateTicketingModule } from './modules/gate-ticketing/gate-ticketing.module';
 import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { PaymentsModule } from './modules/payments/payments.module';
 import { PortsModule } from './modules/ports/ports.module';
 import { PublicPortalModule } from './modules/public-portal/public-portal.module';
 import { ReportsModule } from './modules/reports/reports.module';
@@ -44,6 +45,7 @@ import { WarningsModule } from './modules/warnings/warnings.module';
     NotificationsModule,
     PublicPortalModule,
     ReportsModule,
+    PaymentsModule,
   ],
 })
 export class AppModule {}

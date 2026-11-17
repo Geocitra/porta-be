@@ -1,0 +1,93 @@
+import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import * as crypto from 'crypto';
+import {
+  PaymentProviderAdapter,
+  SnapSessionRequest,
+  SnapSessionResult,
+} from './payment-provider.interface';
+
+@Injectable()
+export class MidtransProvider implements PaymentProviderAdapter {
+  constructor(private readonly configService: ConfigService) {}
+
+  private getServerKey(): string {
+    const key = this.configService.get<string>('MIDTRANS_SERVER_KEY');
+    if (!key) {
+      throw new ServiceUnavailableException('MIDTRANS_SERVER_KEY is not configured');
+    }
+    return key;
+  }
+
+  private getBaseUrl(): string {
+    const isProd = this.configService.get<string>('MIDTRANS_IS_PRODUCTION') === 'true';
+    return isProd
+      ? 'https://app.midtrans.com/snap/v1/transactions'
+      : 'https://app.sandbox.midtrans.com/snap/v1/transactions';
+  }
+
+  async createSnapSession(req: SnapSessionRequest): Promise<SnapSessionResult> {
+    const serverKey = this.getServerKey();
+    const authHeader = Buffer.from(`${serverKey}:`).toString('base64');
+
+    const response = await fetch(this.getBaseUrl(), {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Basic ${authHeader}`,
+      },
+      body: JSON.stringify({
+        transaction_details: {
+          order_id: req.orderId,
+          gross_amount: Math.round(req.amountIdr),
+        },
+        item_details: [
+          {
+            id: req.orderId,
+            price: Math.round(req.amountIdr),
+            quantity: 1,
+            name: req.itemName.slice(0, 50),
+          },
+        ],
+        customer_details: {
+          first_name: req.customerName,
+          email: req.customerEmail,
+        },
+      }),
+    });
+
+    const data = (await response.json()) as {
+      token?: string;
+      redirect_url?: string;
+      error_messages?: string[];
+    };
+
+    if (!response.ok || !data.token || !data.redirect_url) {
+      throw new ServiceUnavailableException(
+        data.error_messages?.join(', ') || 'Failed to create Midtrans Snap session',
+      );
+    }
+
+    return {
+      snapToken: data.token,
+      redirectUrl: data.redirect_url,
+    };
+  }
+
+  verifyWebhookSignature(
+    orderId: string,
+    statusCode: string,
+    grossAmount: string,
+    incomingSignature: string,
+  ): boolean {
+    const serverKey = this.getServerKey();
+    const expected = crypto
+      .createHash('sha512')
+      .update(`${orderId}${statusCode}${grossAmount}${serverKey}`)
+      .digest('hex');
+
+    if (incomingSignature.length !== expected.length) return false;
+    return crypto.timingSafeEqual(Buffer.from(incomingSignature), Buffer.from(expected));
+  }
+}

@@ -43,3 +43,44 @@ export class RegisterOperatorDto {
   operatorProfile?: OperatorProfile;
 }
 
+export class RegisterTenantDto {
+  @ApiProperty({ example: 'tenant@sinarpapua.co.id' })
+  @IsEmail()
+  email!: string;
+
+  @ApiProperty({ example: 'Rahasia123!' })
+  @IsString()
+  @MinLength(6)
+  password!: string;
+
+  @ApiProperty({ example: 'Siti Aminah' })
+  @IsString()
+  @IsNotEmpty()
+  fullName!: string;
+
+  @ApiProperty({ example: 'CV Sinar Papua Mandiri' })
+  @IsString()
+  @IsNotEmpty()
+  businessName!: string;
+
+  @ApiPropertyOptional({ example: '02.111.222.3-954.000' })
+  @IsOptional()
+  @IsString()
+  npwp?: string;
+
+  @ApiPropertyOptional({ example: '1234567890123' })
+  @IsOptional()
+  @IsString()
+  nib?: string;
+
+  @ApiPropertyOptional({ example: '081234567890' })
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @ApiPropertyOptional({ example: 'Jl. Pelabuhan Poumako Kios No. 2, Mimika' })
+  @IsOptional()
+  @IsString()
+  address?: string;
+}
+
