@@ -3,22 +3,25 @@ import {
   Controller,
   Get,
   Param,
+  ParseEnumPipe,
   ParseIntPipe,
   Post,
+  Query,
   Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
+import { ApiBearerAuth, ApiConsumes, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { UserRole, VesselCategory } from '@prisma/client';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PortScopeGuard, ScopeFilter } from '../../common/guards/port-scope.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import {
+  ApproveBerthingOverrideDto,
   CreateVisitDto,
   EndBerthingDto,
   RecordArrivalDto,
@@ -35,13 +38,35 @@ export class VisitsController {
   constructor(private readonly visitsService: VisitsService) {}
 
   @Get()
-  findAll(@Req() req: { portScope: ScopeFilter }) {
-    return this.visitsService.findAll(req.portScope);
+  @ApiQuery({ name: 'vesselCategory', enum: VesselCategory, required: false })
+  findAll(
+    @Req() req: { portScope: ScopeFilter },
+    @Query('vesselCategory', new ParseEnumPipe(VesselCategory, { optional: true }))
+    vesselCategory?: VesselCategory,
+  ) {
+    return this.visitsService.findAll(req.portScope, vesselCategory);
+  }
+
+  @Get('berthing-overrides/pending')
+  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.PETUGAS_DERMAGA)
+  findPendingOverrides(@Req() req: { portScope: ScopeFilter }) {
+    return this.visitsService.findPendingBerthingOverrides(req.portScope);
   }
 
   @Get(':id')
   findById(@Param('id', ParseIntPipe) id: number, @Req() req: { portScope: ScopeFilter }) {
     return this.visitsService.findById(id, req.portScope);
+  }
+
+  @Get(':id/berthings/check-compatibility')
+  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.PETUGAS_DERMAGA)
+  @ApiQuery({ name: 'berthId', type: Number, required: true })
+  checkCompatibility(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('berthId', ParseIntPipe) berthId: number,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.visitsService.checkBerthCompatibility(id, berthId, req.portScope);
   }
 
   @Post()
@@ -92,6 +117,18 @@ export class VisitsController {
     @Req() req: { portScope: ScopeFilter },
   ) {
     return this.visitsService.startBerthing(id, dto, user, req.portScope, evidenceFile);
+  }
+
+  @Post(':id/berthings/:berthingId/approve-override')
+  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  approveBerthingOverride(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('berthingId', ParseIntPipe) berthingId: number,
+    @Body() dto: ApproveBerthingOverrideDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.visitsService.approveBerthingOverride(id, berthingId, dto, user, req.portScope);
   }
 
   @Post(':id/berthings/:berthingId/end')

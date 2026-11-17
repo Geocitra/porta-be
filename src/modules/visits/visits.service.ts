@@ -8,12 +8,15 @@ import {
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   ActivityMode,
+  BerthApprovalStatus,
   BerthCategory,
+  BerthValidationResult,
   BillingEligibility,
   BillingStage,
   InvoiceStatus,
   ServiceCode,
   VerificationStatus,
+  VesselCategory,
   VisitActivityMode,
   VisitOrigin,
   VisitStatus,
@@ -28,19 +31,32 @@ import { StorageService, UploadedFilePayload } from '../../common/utils/storage.
 import { BILLING_CONSTANTS } from '../../config/billing.constants';
 import { TariffResolverService } from '../tariffs/tariff-resolver.service';
 import {
+  ApproveBerthingOverrideDto,
   CreateVisitDto,
   EndBerthingDto,
   RecordArrivalDto,
   RecordDepartureDto,
   StartBerthingDto,
 } from './dto/visits.dto';
+import { evaluateBerthCompatibility } from './berth-compatibility.evaluator';
 import { assertValidVisitTransition } from './visit-state-machine';
 
 export const VISIT_DEPARTED_EVENT = 'visit.departed';
+export const BERTHING_OVERRIDE_REQUESTED_EVENT = 'berthing.override_requested';
 
 export interface VisitDepartedEvent {
   visitId: number;
   actorId: number;
+}
+
+export interface BerthingOverrideRequestedEvent {
+  berthingRecordId: number;
+  visitId: number;
+  visitNumber: string;
+  portId: number;
+  vesselName: string;
+  berthName: string;
+  overrideReason: string;
 }
 
 @Injectable()
@@ -53,13 +69,15 @@ export class VisitsService {
     private readonly storage: StorageService,
   ) {}
 
-  findAll(scope: ScopeFilter) {
+  findAll(scope: ScopeFilter, vesselCategory?: VesselCategory) {
     return this.prisma.shipVisit.findMany({
       where: {
         ...(scope.portId ? { portId: scope.portId } : {}),
         ...(scope.operatorId ? { operatorId: scope.operatorId } : {}),
+        ...(vesselCategory ? { vessel: { vesselCategory } } : {}),
       },
       include: {
+        port: { select: { id: true, code: true, name: true, portCategory: true } },
         vessel: true,
         operator: { select: { id: true, name: true } },
         berthingRecords: { include: { berth: true } },
@@ -88,6 +106,67 @@ export class VisitsService {
       throw new ForbiddenException('Cross-operator access denied');
     }
     return visit;
+  }
+
+  findPendingBerthingOverrides(scope: ScopeFilter) {
+    return this.prisma.berthingRecord.findMany({
+      where: {
+        approvalStatus: BerthApprovalStatus.PENDING,
+        ...(scope.portId ? { portId: scope.portId } : {}),
+      },
+      include: {
+        berth: {
+          select: { id: true, code: true, name: true, berthServiceCategory: true },
+        },
+        visit: {
+          select: {
+            id: true,
+            visitNumber: true,
+            vessel: {
+              select: { id: true, name: true, registrationNumber: true, vesselCategory: true },
+            },
+            operator: { select: { id: true, name: true } },
+          },
+        },
+        recordedBy: { select: { id: true, fullName: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async checkBerthCompatibility(visitId: number, berthId: number, scope: ScopeFilter) {
+    const visit = await this.findById(visitId, scope);
+    const berth = await this.prisma.berth.findUnique({ where: { id: berthId } });
+    if (!berth || !berth.isActive) {
+      throw new NotFoundException(`Berth #${berthId} not found or inactive`);
+    }
+    if (berth.portId !== visit.portId) {
+      throw new BadRequestException('Berth does not belong to the same port as the visit');
+    }
+
+    const evaluation = evaluateBerthCompatibility({
+      portCategory: visit.port.portCategory,
+      berthOperationalStatus: berth.operationalStatus,
+      berthServiceCategory: berth.berthServiceCategory,
+      berthMaxLengthMeters:
+        berth.maxLengthMeters != null ? DecimalUtil.toNumber(berth.maxLengthMeters) : null,
+      berthMaxDraftMeters:
+        berth.maxDraftMeters != null ? DecimalUtil.toNumber(berth.maxDraftMeters) : null,
+      vesselCategory: visit.vessel.vesselCategory,
+      vesselLengthMeters:
+        visit.vessel.lengthMeters != null ? DecimalUtil.toNumber(visit.vessel.lengthMeters) : null,
+      vesselDraftMeters:
+        visit.vessel.draftMeters != null ? DecimalUtil.toNumber(visit.vessel.draftMeters) : null,
+    });
+
+    return {
+      visitId: visit.id,
+      berthId: berth.id,
+      portCategory: visit.port.portCategory,
+      vesselCategory: visit.vessel.vesselCategory,
+      berthServiceCategory: berth.berthServiceCategory,
+      ...evaluation,
+    };
   }
 
   async createVisit(dto: CreateVisitDto, user: AuthenticatedUser, scope: ScopeFilter) {
@@ -272,14 +351,56 @@ export class VisitsService {
       throw new BadRequestException('Berth does not belong to the same port as the visit');
     }
 
-    // Ensure no open berthing record already exists for this visit
+    // Ensure no open or pending-approval berthing record already exists for this visit
     const openBerthing = await this.prisma.berthingRecord.findFirst({
-      where: { visitId, actualEndAt: null },
+      where: {
+        visitId,
+        actualEndAt: null,
+        approvalStatus: {
+          in: [
+            BerthApprovalStatus.AUTO_APPROVED,
+            BerthApprovalStatus.APPROVED,
+            BerthApprovalStatus.PENDING,
+          ],
+        },
+      },
     });
     if (openBerthing) {
       throw new ConflictException(
-        `Visit #${visitId} still has an active berthing record (#${openBerthing.id}). End it before moving berth.`,
+        `Visit #${visitId} still has an active or pending berthing record (#${openBerthing.id}). End or resolve it before moving berth.`,
       );
+    }
+
+    // 3-Level Hybrid Validation (ALLOW / WARNING + Approval / Hard BLOCK)
+    const evaluation = evaluateBerthCompatibility({
+      portCategory: visit.port.portCategory,
+      berthOperationalStatus: berth.operationalStatus,
+      berthServiceCategory: berth.berthServiceCategory,
+      berthMaxLengthMeters: berth.maxLengthMeters != null ? DecimalUtil.toNumber(berth.maxLengthMeters) : null,
+      berthMaxDraftMeters: berth.maxDraftMeters != null ? DecimalUtil.toNumber(berth.maxDraftMeters) : null,
+      vesselCategory: visit.vessel.vesselCategory,
+      vesselLengthMeters: visit.vessel.lengthMeters != null ? DecimalUtil.toNumber(visit.vessel.lengthMeters) : null,
+      vesselDraftMeters: visit.vessel.draftMeters != null ? DecimalUtil.toNumber(visit.vessel.draftMeters) : null,
+    });
+
+    if (evaluation.validationResult === BerthValidationResult.BLOCK) {
+      throw new BadRequestException(
+        `Penempatan dermaga ditolak (Hard Block): ${evaluation.reasons.join('; ')}`,
+      );
+    }
+
+    const requiresApproval = evaluation.validationResult === BerthValidationResult.WARNING;
+    if (requiresApproval) {
+      if (!dto.overrideReason?.trim()) {
+        throw new BadRequestException(
+          `Kategori kapal/dermaga tidak sesuai (${evaluation.reasons.join('; ')}). Wajib mengisi overrideReason untuk pengajuan persetujuan.`,
+        );
+      }
+      if (dto.safetyChecklistVerified !== true) {
+        throw new BadRequestException(
+          'Pemeriksaan persyaratan keselamatan (safetyChecklistVerified=true) wajib dicentang untuk penempatan dermaga berbeda kategori.',
+        );
+      }
     }
 
     // Early tariff check for berth only if verified BILLABLE by Pemda
@@ -296,18 +417,18 @@ export class VisitsService {
       });
     }
 
-    const actualStartAt = new Date(dto.actualStartAt);
+    const requestedStartAt = new Date(dto.actualStartAt);
     const evidencePhoto = evidenceFile
       ? await this.storage.saveFile(`berthings/${visitId}`, evidenceFile)
       : null;
 
-    return this.prisma.$transaction(async (tx) => {
-      if (visit.status !== VisitStatus.BERTHED) {
+    const result = await this.prisma.$transaction(async (tx) => {
+      if (!requiresApproval && visit.status !== VisitStatus.BERTHED) {
         await tx.shipVisit.update({
           where: { id: visitId },
           data: {
             status: VisitStatus.BERTHED,
-            ataAnchorage: visit.ataAnchorage ?? actualStartAt,
+            ataAnchorage: visit.ataAnchorage ?? requestedStartAt,
           },
         });
       }
@@ -318,22 +439,116 @@ export class VisitsService {
           visitId: visit.id,
           berthId: berth.id,
           berthCategory: dto.berthCategory,
-          actualStartAt,
+          plannedStartAt: requiresApproval ? requestedStartAt : null,
+          actualStartAt: requiresApproval ? null : requestedStartAt,
           evidencePhoto,
+          compatibilityStatus: evaluation.compatibilityStatus,
+          validationResult: evaluation.validationResult,
+          approvalStatus: requiresApproval
+            ? BerthApprovalStatus.PENDING
+            : BerthApprovalStatus.AUTO_APPROVED,
+          overrideReason: requiresApproval ? dto.overrideReason!.trim() : null,
+          safetyChecklistVerified: requiresApproval ? true : true,
           recordedById: user.id,
         },
       });
 
       await this.auditLog.record({
         actorId: user.id,
-        action: 'BERTHING_STARTED',
+        action: requiresApproval ? 'BERTHING_OVERRIDE_REQUESTED' : 'BERTHING_STARTED',
         entityName: 'berthing_records',
         entityId: record.id,
-        afterData: record,
+        afterData: { ...record, compatibilityReasons: evaluation.reasons },
+        reason: requiresApproval ? dto.overrideReason!.trim() : undefined,
         tx,
       });
 
       return record;
+    });
+
+    if (requiresApproval) {
+      this.eventEmitter.emit(BERTHING_OVERRIDE_REQUESTED_EVENT, {
+        berthingRecordId: result.id,
+        visitId: visit.id,
+        visitNumber: visit.visitNumber,
+        portId: visit.portId,
+        vesselName: visit.vessel.name,
+        berthName: berth.name,
+        overrideReason: dto.overrideReason!.trim(),
+      } satisfies BerthingOverrideRequestedEvent);
+    }
+
+    return result;
+  }
+
+  async approveBerthingOverride(
+    visitId: number,
+    berthingId: number,
+    dto: ApproveBerthingOverrideDto,
+    user: AuthenticatedUser,
+    scope: ScopeFilter,
+  ) {
+    const visit = await this.findById(visitId, scope);
+    await this.assertNotLockedByFinalSkrd(visitId);
+
+    const record = await this.prisma.berthingRecord.findUnique({ where: { id: berthingId } });
+    if (!record || record.visitId !== visitId) {
+      throw new NotFoundException(`BerthingRecord #${berthingId} not found for visit #${visitId}`);
+    }
+    if (record.approvalStatus !== BerthApprovalStatus.PENDING) {
+      throw new ConflictException(
+        `BerthingRecord #${berthingId} is already in approvalStatus ${record.approvalStatus}`,
+      );
+    }
+
+    const now = new Date();
+    const isApproved = dto.decision === 'APPROVED';
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.berthingRecord.updateMany({
+        where: { id: berthingId, approvalStatus: BerthApprovalStatus.PENDING },
+        data: {
+          approvalStatus: isApproved
+            ? BerthApprovalStatus.APPROVED
+            : BerthApprovalStatus.REJECTED,
+          approvedById: user.id,
+          approvedAt: now,
+          approvalNotes: dto.approvalNotes,
+          ...(isApproved
+            ? { actualStartAt: record.plannedStartAt ?? now }
+            : { actualEndAt: now }),
+        },
+      });
+
+      if (updated.count === 0) {
+        throw new ConflictException('Berthing override approval status changed concurrently');
+      }
+
+      if (isApproved && visit.status !== VisitStatus.BERTHED) {
+        const effectiveStart = record.plannedStartAt ?? now;
+        await tx.shipVisit.update({
+          where: { id: visitId },
+          data: {
+            status: VisitStatus.BERTHED,
+            ataAnchorage: visit.ataAnchorage ?? effectiveStart,
+          },
+        });
+      }
+
+      const refreshed = await tx.berthingRecord.findUnique({ where: { id: berthingId } });
+
+      await this.auditLog.record({
+        actorId: user.id,
+        action: isApproved ? 'BERTHING_OVERRIDE_APPROVED' : 'BERTHING_OVERRIDE_REJECTED',
+        entityName: 'berthing_records',
+        entityId: berthingId,
+        beforeData: record,
+        afterData: refreshed,
+        reason: dto.approvalNotes,
+        tx,
+      });
+
+      return refreshed;
     });
   }
 
@@ -350,6 +565,14 @@ export class VisitsService {
     const record = await this.prisma.berthingRecord.findUnique({ where: { id: berthingId } });
     if (!record || record.visitId !== visitId) {
       throw new NotFoundException(`BerthingRecord #${berthingId} not found for visit #${visitId}`);
+    }
+    if (
+      record.approvalStatus === BerthApprovalStatus.PENDING ||
+      record.approvalStatus === BerthApprovalStatus.REJECTED
+    ) {
+      throw new BadRequestException(
+        `Cannot end berthing while approvalStatus is ${record.approvalStatus}`,
+      );
     }
     if (!record.actualStartAt) {
       throw new BadRequestException('Berthing start time has not been recorded');
@@ -412,7 +635,17 @@ export class VisitsService {
     assertValidVisitTransition(visit.status, VisitStatus.DEPARTED);
 
     const openBerthing = await this.prisma.berthingRecord.findFirst({
-      where: { visitId, actualEndAt: null },
+      where: {
+        visitId,
+        actualEndAt: null,
+        approvalStatus: {
+          in: [
+            BerthApprovalStatus.AUTO_APPROVED,
+            BerthApprovalStatus.APPROVED,
+            BerthApprovalStatus.PENDING,
+          ],
+        },
+      },
     });
     if (openBerthing) {
       throw new BadRequestException(

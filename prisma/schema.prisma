@@ -40,6 +40,48 @@ enum BerthType {
   PINGGIRAN_TALUD
 }
 
+enum PortCategory {
+  BARANG
+  PENUMPANG
+  CAMPURAN
+}
+
+enum BerthServiceCategory {
+  DERMAGA_BARANG
+  DERMAGA_PENUMPANG
+  DERMAGA_CAMPURAN
+}
+
+enum BerthOperationalStatus {
+  OPEN
+  CLOSED
+  MAINTENANCE
+}
+
+enum VesselCategory {
+  BARANG
+  PENUMPANG
+  CAMPURAN
+}
+
+enum BerthCompatibilityStatus {
+  MATCH
+  MISMATCH
+}
+
+enum BerthValidationResult {
+  ALLOW
+  WARNING
+  BLOCK
+}
+
+enum BerthApprovalStatus {
+  AUTO_APPROVED
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum AuthorityType {
   PEMDA_DISHUB
   UPP_KEMENHUB
@@ -280,13 +322,14 @@ enum AdjustmentApprovalStatus {
 // ============================================================================
 
 model Port {
-  id        Int      @id @default(autoincrement())
-  code      String   @unique @db.VarChar(20)
-  name      String   @db.VarChar(150)
-  location  String?  @db.VarChar(200)
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id           Int          @id @default(autoincrement())
+  code         String       @unique @db.VarChar(20)
+  name         String       @db.VarChar(150)
+  location     String?      @db.VarChar(200)
+  portCategory PortCategory @default(CAMPURAN) @map("port_category")
+  isActive     Boolean      @default(true) @map("is_active")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
 
   users            User[]
   berths           Berth[]
@@ -327,7 +370,8 @@ model User {
   verifiedOperators ShipOperator[]   @relation("OperatorVerifiedBy")
   verifiedVessels   Vessel[]         @relation("VesselVerifiedBy")
   uploadedDocuments Document[]       @relation("DocumentUploadedBy")
-  recordedBerthings BerthingRecord[] @relation("RecordedBy")
+  recordedBerthings  BerthingRecord[] @relation("RecordedBy")
+  approvedBerthings  BerthingRecord[] @relation("BerthingApprovedBy")
   verifiedPayments  Payment[]         @relation("VerifiedBy")
   auditLogs         AuditLog[]        @relation("Actor")
   dailyPortReports   DailyPortReport[]   @relation("ReportOfficer")
@@ -349,19 +393,22 @@ model User {
 }
 
 model Berth {
-  id                Int           @id @default(autoincrement())
-  portId            Int           @map("port_id")
-  code              String        @db.VarChar(30)
-  name              String        @db.VarChar(150)
-  berthType          BerthType          @map("berth_type")
-  authorityType      AuthorityType      @map("authority_type")
-  billingEligibility BillingEligibility @default(PENDING_VERIFICATION) @map("billing_eligibility")
-  legalBasis         String?            @map("legal_basis") @db.VarChar(255)
-  managementEvidence String?            @map("management_evidence") @db.VarChar(255)
-  maxLengthMeters    Decimal?           @map("max_length_meters") @db.Decimal(8, 2)
-  isActive          Boolean       @default(true) @map("is_active")
-  createdAt         DateTime      @default(now()) @map("created_at")
-  updatedAt         DateTime      @updatedAt @map("updated_at")
+  id                   Int                    @id @default(autoincrement())
+  portId               Int                    @map("port_id")
+  code                 String                 @db.VarChar(30)
+  name                 String                 @db.VarChar(150)
+  berthType            BerthType              @map("berth_type")
+  berthServiceCategory BerthServiceCategory   @default(DERMAGA_CAMPURAN) @map("berth_service_category")
+  operationalStatus    BerthOperationalStatus @default(OPEN) @map("operational_status")
+  authorityType        AuthorityType          @map("authority_type")
+  billingEligibility   BillingEligibility     @default(PENDING_VERIFICATION) @map("billing_eligibility")
+  legalBasis           String?                @map("legal_basis") @db.VarChar(255)
+  managementEvidence   String?                @map("management_evidence") @db.VarChar(255)
+  maxLengthMeters      Decimal?               @map("max_length_meters") @db.Decimal(8, 2)
+  maxDraftMeters       Decimal?               @map("max_draft_meters") @db.Decimal(6, 2)
+  isActive             Boolean                @default(true) @map("is_active")
+  createdAt            DateTime               @default(now()) @map("created_at")
+  updatedAt            DateTime               @updatedAt @map("updated_at")
 
   port               Port                  @relation(fields: [portId], references: [id], onDelete: Restrict)
   berthingRecords    BerthingRecord[]
@@ -408,7 +455,10 @@ model Vessel {
   name               String             @db.VarChar(150)
   flag               String             @default("Indonesia") @db.VarChar(80)
   grossTonnage       Decimal            @map("gross_tonnage") @db.Decimal(12, 2)
+  lengthMeters       Decimal?           @map("length_meters") @db.Decimal(8, 2)
+  draftMeters        Decimal?           @map("draft_meters") @db.Decimal(6, 2)
   shipType           ShipType           @map("ship_type")
+  vesselCategory     VesselCategory     @default(CAMPURAN) @map("vessel_category")
   shippingCategory   ShippingCategory   @map("shipping_category")
   verificationStatus VerificationStatus @default(PENDING) @map("verification_status")
   rejectionReason    String?            @map("rejection_reason") @db.Text
@@ -533,15 +583,24 @@ model BerthingRecord {
   calculatedHours Decimal?      @map("calculated_hours") @db.Decimal(10, 2)
   billableEtmal   Decimal?      @map("billable_etmal") @db.Decimal(10, 2)
   evidencePhoto   String?       @map("evidence_photo") @db.VarChar(255)
-  isOverstay      Boolean       @default(false) @map("is_overstay")
-  overstayHours   Decimal?      @map("overstay_hours") @db.Decimal(10, 2)
-  recordedById    Int?          @map("recorded_by_id")
-  createdAt       DateTime      @default(now()) @map("created_at")
-  updatedAt       DateTime      @updatedAt @map("updated_at")
+  isOverstay              Boolean                  @default(false) @map("is_overstay")
+  overstayHours           Decimal?                 @map("overstay_hours") @db.Decimal(10, 2)
+  compatibilityStatus     BerthCompatibilityStatus @default(MATCH) @map("compatibility_status")
+  validationResult        BerthValidationResult    @default(ALLOW) @map("validation_result")
+  approvalStatus          BerthApprovalStatus      @default(AUTO_APPROVED) @map("approval_status")
+  overrideReason          String?                  @map("override_reason") @db.Text
+  safetyChecklistVerified Boolean                  @default(false) @map("safety_checklist_verified")
+  approvedById            Int?                     @map("approved_by_id")
+  approvedAt              DateTime?                @map("approved_at")
+  approvalNotes           String?                  @map("approval_notes") @db.Text
+  recordedById            Int?                     @map("recorded_by_id")
+  createdAt               DateTime                 @default(now()) @map("created_at")
+  updatedAt               DateTime                 @updatedAt @map("updated_at")
 
   visit      ShipVisit @relation(fields: [portId, visitId], references: [portId, id], onDelete: Restrict)
   berth      Berth     @relation(fields: [portId, berthId], references: [portId, id], onDelete: Restrict)
   recordedBy User?     @relation("RecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+  approvedBy User?     @relation("BerthingApprovedBy", fields: [approvedById], references: [id], onDelete: Restrict)
 
   @@index([visitId])
   @@index([berthId])

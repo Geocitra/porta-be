@@ -1,6 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
+import { UserRole } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import {
+  BERTHING_OVERRIDE_REQUESTED_EVENT,
+  BerthingOverrideRequestedEvent,
+} from '../visits/visits.service';
 import { WARNING_ISSUED_EVENT, WarningIssuedEvent } from '../warnings/warnings.service';
 
 @Injectable()
@@ -45,6 +50,34 @@ export class NotificationsService {
         message: event.message,
         type: 'WARNING',
         linkUrl: `/operator/warnings/${event.warningId}`,
+      })),
+    });
+  }
+
+  @OnEvent(BERTHING_OVERRIDE_REQUESTED_EVENT)
+  async handleBerthingOverrideRequested(
+    event: BerthingOverrideRequestedEvent,
+  ): Promise<void> {
+    const approvers = await this.prisma.user.findMany({
+      where: {
+        isActive: true,
+        OR: [
+          { role: UserRole.SUPERADMIN },
+          { role: UserRole.ADMIN_PELABUHAN, portId: event.portId },
+        ],
+      },
+      select: { id: true },
+    });
+
+    if (approvers.length === 0) return;
+
+    await this.prisma.notification.createMany({
+      data: approvers.map((u) => ({
+        userId: u.id,
+        title: `Persetujuan Sandar Diperlukan (${event.visitNumber})`,
+        message: `Kapal ${event.vesselName} diajukan bersandar di ${event.berthName} (beda kategori). Alasan: ${event.overrideReason}`,
+        type: 'BERTHING_OVERRIDE',
+        linkUrl: `/visits/${event.visitId}`,
       })),
     });
   }

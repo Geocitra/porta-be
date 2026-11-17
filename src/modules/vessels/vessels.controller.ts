@@ -3,16 +3,18 @@ import {
   Controller,
   Get,
   Param,
+  ParseEnumPipe,
   ParseIntPipe,
   Post,
+  Query,
   Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
+import { ApiBearerAuth, ApiConsumes, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { UserRole, VesselCategory } from '@prisma/client';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -68,8 +70,13 @@ export class VesselsController {
   }
 
   @Get()
-  findVessels(@Req() req: { portScope: ScopeFilter }) {
-    return this.vesselsService.findVessels(req.portScope);
+  @ApiQuery({ name: 'vesselCategory', enum: VesselCategory, required: false })
+  findVessels(
+    @Req() req: { portScope: ScopeFilter },
+    @Query('vesselCategory', new ParseEnumPipe(VesselCategory, { optional: true }))
+    vesselCategory?: VesselCategory,
+  ) {
+    return this.vesselsService.findVessels(req.portScope, vesselCategory);
   }
 
   @Post()

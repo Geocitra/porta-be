@@ -5,6 +5,7 @@ import {
   ChargePaymentStatus,
   HandoverStatus,
   InvoiceStatus,
+  VesselCategory,
   VisitStatus,
 } from '@prisma/client';
 import { ScopeFilter } from '../../common/guards/port-scope.guard';
@@ -29,6 +30,7 @@ export class ReportsService {
       manifestAgg,
       outstandingInvoices,
       unbilledVisitsCount,
+      visitsForCategoryBreakdown,
     ] = await Promise.all([
       this.prisma.payment.aggregate({
         where: {
@@ -117,6 +119,21 @@ export class ReportsService {
           },
         },
       }),
+      this.prisma.shipVisit.findMany({
+        where: portFilter,
+        select: {
+          vessel: { select: { vesselCategory: true } },
+          invoices: {
+            where: { status: { not: InvoiceStatus.VOID } },
+            select: {
+              payments: {
+                where: { isVerified: true },
+                select: { amountIdr: true },
+              },
+            },
+          },
+        },
+      }),
     ]);
 
     const outstandingReceivablesIdr = outstandingInvoices.reduce((total, inv) => {
@@ -138,6 +155,26 @@ export class ReportsService {
       DecimalUtil.toNumber(cargoPaid._sum.totalAmountIdr) +
       DecimalUtil.toNumber(equipmentPaid._sum.totalAmountIdr);
     const utilityRevenueIdr = DecimalUtil.toNumber(utilityPaid._sum.totalAmountIdr);
+
+    const vesselCategoryBreakdown: Record<
+      VesselCategory,
+      { visitCount: number; verifiedRevenueIdr: number }
+    > = {
+      [VesselCategory.BARANG]: { visitCount: 0, verifiedRevenueIdr: 0 },
+      [VesselCategory.PENUMPANG]: { visitCount: 0, verifiedRevenueIdr: 0 },
+      [VesselCategory.CAMPURAN]: { visitCount: 0, verifiedRevenueIdr: 0 },
+    };
+
+    for (const v of visitsForCategoryBreakdown) {
+      const cat = v.vessel.vesselCategory;
+      const paidIdr = v.invoices.reduce(
+        (sum, inv) =>
+          sum + inv.payments.reduce((pSum, p) => pSum + DecimalUtil.toNumber(p.amountIdr), 0),
+        0,
+      );
+      vesselCategoryBreakdown[cat].visitCount += 1;
+      vesselCategoryBreakdown[cat].verifiedRevenueIdr += paidIdr;
+    }
 
     return {
       vesselRevenueIdr,
@@ -163,6 +200,7 @@ export class ReportsService {
         totalVehicles: manifestAgg._sum.vehicleCount ?? 0,
         terminalPassengerFeeIdr: DecimalUtil.toNumber(manifestAgg._sum.terminalFeeIdr),
       },
+      vesselCategoryBreakdown,
     };
   }
 

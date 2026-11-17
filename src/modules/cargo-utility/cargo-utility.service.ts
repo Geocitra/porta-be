@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ChargePaymentStatus } from '@prisma/client';
+import { ChargePaymentStatus, VesselCategory } from '@prisma/client';
 import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ScopeFilter } from '../../common/guards/port-scope.guard';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -27,7 +27,12 @@ export class CargoUtilityService {
   ) {}
 
   async createCargoRecord(dto: CreateCargoRecordDto, actor: AuthenticatedUser) {
-    await this.assertVisitBelongsToPort(dto.portId, dto.visitId);
+    const visit = await this.assertVisitBelongsToPort(dto.portId, dto.visitId);
+    if (visit && visit.vessel.vesselCategory === VesselCategory.PENUMPANG) {
+      throw new BadRequestException(
+        'Kapal kategori PENUMPANG tidak dapat mencatat bongkar muat barang komersial. Gunakan kategori BARANG atau CAMPURAN.',
+      );
+    }
 
     const ratePerUnitIdr = await this.resolveRateOrUseProvided(
       dto.tariffCode,
@@ -312,12 +317,16 @@ export class CargoUtilityService {
     return explicitRate;
   }
 
-  private async assertVisitBelongsToPort(portId: number, visitId?: number): Promise<void> {
-    if (!visitId) return;
-    const visit = await this.prisma.shipVisit.findUnique({ where: { id: visitId } });
+  private async assertVisitBelongsToPort(portId: number, visitId?: number) {
+    if (!visitId) return null;
+    const visit = await this.prisma.shipVisit.findUnique({
+      where: { id: visitId },
+      include: { vessel: { select: { vesselCategory: true } } },
+    });
     if (!visit || visit.portId !== portId) {
       throw new BadRequestException(`Visit #${visitId} does not belong to port #${portId}`);
     }
+    return visit;
   }
 }
 

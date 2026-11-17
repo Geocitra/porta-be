@@ -5,6 +5,7 @@ import {
   ShipType,
   ShippingCategory,
   VerificationStatus,
+  VesselCategory,
 } from '@prisma/client';
 import {
   IsEmail,
@@ -82,9 +83,26 @@ export class CreateVesselDto {
   @IsEnum(ShipType)
   shipType!: ShipType;
 
+  @ApiPropertyOptional({ enum: VesselCategory, default: VesselCategory.CAMPURAN })
+  @IsOptional()
+  @IsEnum(VesselCategory)
+  vesselCategory?: VesselCategory;
+
   @ApiProperty({ enum: ShippingCategory })
   @IsEnum(ShippingCategory)
   shippingCategory!: ShippingCategory;
+
+  @ApiPropertyOptional({ example: 65 })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  lengthMeters?: number;
+
+  @ApiPropertyOptional({ example: 4.5 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0.5)
+  draftMeters?: number;
 }
 
 export class UploadDocumentDto {

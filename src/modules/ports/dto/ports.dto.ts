@@ -1,6 +1,23 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { AuthorityType, BerthType, BillingEligibility } from '@prisma/client';
-import { IsEnum, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import {
+  AuthorityType,
+  BerthOperationalStatus,
+  BerthServiceCategory,
+  BerthType,
+  BillingEligibility,
+  PortCategory,
+} from '@prisma/client';
+import {
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+} from 'class-validator';
 
 export class CreatePortDto {
   @ApiProperty({ example: 'PMK' })
@@ -19,6 +36,11 @@ export class CreatePortDto {
   @IsOptional()
   @IsString()
   location?: string;
+
+  @ApiPropertyOptional({ enum: PortCategory, default: PortCategory.CAMPURAN })
+  @IsOptional()
+  @IsEnum(PortCategory)
+  portCategory?: PortCategory;
 }
 
 export class CreateBerthDto {
@@ -41,6 +63,22 @@ export class CreateBerthDto {
   @ApiProperty({ enum: BerthType })
   @IsEnum(BerthType)
   berthType!: BerthType;
+
+  @ApiPropertyOptional({
+    enum: BerthServiceCategory,
+    default: BerthServiceCategory.DERMAGA_CAMPURAN,
+  })
+  @IsOptional()
+  @IsEnum(BerthServiceCategory)
+  berthServiceCategory?: BerthServiceCategory;
+
+  @ApiPropertyOptional({
+    enum: BerthOperationalStatus,
+    default: BerthOperationalStatus.OPEN,
+  })
+  @IsOptional()
+  @IsEnum(BerthOperationalStatus)
+  operationalStatus?: BerthOperationalStatus;
 
   @ApiProperty({ enum: AuthorityType })
   @IsEnum(AuthorityType)
@@ -69,5 +107,71 @@ export class CreateBerthDto {
   @IsNumber()
   @Min(1)
   maxLengthMeters?: number;
+
+  @ApiPropertyOptional({ example: 8.5 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0.5)
+  maxDraftMeters?: number;
+}
+
+export class UpdatePortDto {
+  @ApiPropertyOptional({ example: 'Pelabuhan Poumako' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(150)
+  name?: string;
+
+  @ApiPropertyOptional({ example: 'Kabupaten Mimika, Papua Tengah' })
+  @IsOptional()
+  @IsString()
+  location?: string;
+
+  @ApiPropertyOptional({ enum: PortCategory })
+  @IsOptional()
+  @IsEnum(PortCategory)
+  portCategory?: PortCategory;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+export class UpdateBerthDto {
+  @ApiPropertyOptional({ example: 'Dermaga Beton Utama Pemda' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(150)
+  name?: string;
+
+  @ApiPropertyOptional({ enum: BerthServiceCategory })
+  @IsOptional()
+  @IsEnum(BerthServiceCategory)
+  berthServiceCategory?: BerthServiceCategory;
+
+  @ApiPropertyOptional({ enum: BerthOperationalStatus })
+  @IsOptional()
+  @IsEnum(BerthOperationalStatus)
+  operationalStatus?: BerthOperationalStatus;
+
+  @ApiPropertyOptional({ example: 120 })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  maxLengthMeters?: number;
+
+  @ApiPropertyOptional({ example: 8.5 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0.5)
+  maxDraftMeters?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }
 

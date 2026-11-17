@@ -1,0 +1,425 @@
+erDiagram
+
+    %% ========================================================
+    %% 1. MASTER DATA, ONBOARDING & ACCESS CONTROL
+    %% ========================================================
+
+    Port {
+        int id PK
+        string code "PMK - Unique"
+        string name "Pelabuhan Poumako"
+        string location
+        boolean is_active
+        datetime created_at
+    }
+
+    User {
+        int id PK
+        string email "Unique"
+        string password_hash
+        string full_name
+        string role "SUPERADMIN | ADMIN_PELABUHAN | BENDAHARA | etc"
+        int port_id FK "Nullable - Port Scoping"
+        int operator_id FK "Nullable - Agency Scoping"
+        boolean is_active
+    }
+
+    Berth {
+        int id PK
+        int port_id FK
+        string code "DRM-PEMDA-01 | TLD-01 | DRM-UPP-01"
+        string name "Dermaga Beton / Talud"
+        string berth_type "BETON_BESI | TALUD | DOLPHIN"
+        string authority_type "PEMDA_DISHUB | UPP_KEMENHUB | TUKS"
+        string billing_eligibility "BILLABLE | NOT_BILLABLE"
+        decimal max_length_meters
+        boolean is_active
+    }
+
+    ShipOperator {
+        int id PK
+        string name "PT PELNI | PT ASDP | PT Temas"
+        string npwp
+        string phone
+        string email
+        string operator_profile "REGULAR_SCHEDULED | INCIDENTAL"
+        string verification_status "PENDING | VERIFIED | REJECTED"
+        datetime verified_at
+        int verified_by_id FK
+    }
+
+    Vessel {
+        int id PK
+        int operator_id FK
+        string registration_number "Unique - Pas Kapal"
+        string imo_number "Unique - Nullable"
+        string name "KM Tatamailau | KMP Kokonao"
+        string flag "Indonesia"
+        decimal gross_tonnage "Dasar Pengenaan Retribusi"
+        string ship_type "NIAGA | NON_NIAGA"
+        string shipping_category "DALAM_NEGERI | LUAR_NEGERI | PELRA"
+        string verification_status "VERIFIED"
+    }
+
+    Document {
+        int id PK
+        int operator_id FK
+        int vessel_id FK "Nullable"
+        string category "SIUPAL_NIB | NPWP | SURAT_UKUR | PAS"
+        string document_number
+        string file_path
+        int uploaded_by_id FK
+        string verification_status "VERIFIED"
+    }
+
+    %% ========================================================
+    %% 2. TARIFF MATRIX (PERDA MIMIKA 4/2023)
+    %% ========================================================
+
+    PortTariff {
+        int id PK
+        string tariff_code "Unique - LABUH_NIAGA_DN | TAMBAT_BETON_DN"
+        string service_code "JASA_LABUH | JASA_TAMBAT_UMUM"
+        string shipping_category "DALAM_NEGERI | LUAR_NEGERI | PELRA"
+        string ship_type "NIAGA | NON_NIAGA"
+        string berth_type "DERMAGA | DOLPHIN | TALUD"
+        string unit_type "GT_PER_15_DAYS | GT_PER_ETMAL"
+        string currency "IDR | USD"
+        decimal amount "Tarif Nominal"
+        datetime effective_from
+        boolean is_active
+    }
+
+    GeneralTariff {
+        int id PK
+        string tariff_code "Unique"
+        string domain "CARGO | EQUIPMENT | UTILITY | PASSENGER"
+        string item_key "BULOG | FORKLIFT | AIR_BERSIH"
+        string unit_label "Ton | Jam | Liter | Orang"
+        decimal amount_idr
+        boolean is_active
+    }
+
+    FerryRoute {
+        int id PK
+        int port_id FK
+        string destination_name "Otakwa | Kokonao | Agimuga"
+        int distance_miles
+        decimal adult_fare_idr
+        decimal child_fare_idr
+        decimal infant_fare_idr
+        decimal cargo_per_ton_idr
+        boolean is_active
+    }
+
+    %% ========================================================
+    %% 3. PORT OPERATIONS & VESSEL REALIZATION
+    %% ========================================================
+
+    ShipVisit {
+        int id PK
+        string visit_number "Unique - VISIT-PMK-2024-001"
+        int port_id FK
+        int vessel_id FK
+        int operator_id FK
+        string visit_origin "OPERATOR_REQUEST | OFFICER_INCIDENTAL"
+        string activity_mode "NORMAL | FIXED_ACTIVITY | TUKS"
+        boolean is_transit_only
+        string origin_port
+        string destination_port
+        datetime eta
+        datetime etd
+        datetime ata_anchorage
+        datetime atd_port
+        string status "REQUESTED | ANCHORED | BERTHED | DEPARTED | SETTLED"
+    }
+
+    BerthingRecord {
+        int id PK
+        int port_id FK
+        int visit_id FK
+        int berth_id FK
+        string berth_category "UMUM | KHUSUS_TUKS"
+        datetime planned_start_at
+        datetime planned_end_at
+        datetime actual_start_at
+        datetime actual_end_at
+        decimal calculated_hours
+        decimal billable_etmal "1 Etmal = 24 Jam"
+        string evidence_photo
+        boolean is_overstay
+        int recorded_by_id FK
+    }
+
+    VesselManifest {
+        int id PK
+        string manifest_number "Unique"
+        int port_id FK
+        int visit_id FK "Unique"
+        int ferry_route_id FK "Nullable"
+        string terminal_class "KELAS_A | KELAS_B | KELAS_C"
+        int adult_count
+        int child_count
+        int infant_count
+        int greeter_count "Jumlah Pengantar"
+        int vehicle_count
+        decimal cargo_tons
+        decimal terminal_fee_idr "Total Retribusi Terminal"
+        int recorded_by_id FK
+    }
+
+    %% ========================================================
+    %% 4. FINANCIAL SETTLEMENT, INVOICING & AUDIT
+    %% ========================================================
+
+    Invoice {
+        int id PK
+        string invoice_number "Unique - SKRD-PMK-2024-0001"
+        string ssrd_number "Unique - Nullable"
+        string collection_instrument "KARCIS | SKRD"
+        int port_id FK
+        int visit_id FK
+        int operator_id FK
+        string billing_stage "ADVANCE_SKRD | FINAL_SKRD"
+        decimal exchange_rate_usd "Live Kurs USD to IDR"
+        decimal total_amount_idr "Total Tagihan Retribusi"
+        string status "ISSUED | PAID | VOID"
+        datetime issued_at
+        datetime due_date "Jatuh Tempo 7 Hari"
+    }
+
+    InvoiceItem {
+        int id PK
+        int invoice_id FK
+        int tariff_id FK "Nullable"
+        string service_code "JASA_LABUH | JASA_TAMBAT"
+        string description
+        decimal gt_snapshot "GT Saat Faktur Terbit"
+        decimal units_charged "1 Periode / Total Etmal"
+        decimal tariff_amount_snapshot "Tarif Snapshot"
+        decimal subtotal_idr
+        string formula_note "Catatan Audit BPK"
+    }
+
+    Payment {
+        int id PK
+        int invoice_id FK
+        string idempotency_key "Unique - PAY-SKRD-001"
+        decimal amount_idr
+        string method "BANK_TRANSFER | CASH | QRIS"
+        string reference_no "No Bukti Transfer Bank"
+        string proof_file_path
+        datetime paid_at
+        boolean is_verified
+        int verified_by_id FK "Bendahara"
+    }
+
+    BillingAdjustment {
+        int id PK
+        string request_number "Unique"
+        int port_id FK
+        int invoice_id FK
+        string adjustment_type "INSTALLMENT_PLAN | PAYMENT_DEFERRAL | REFUND"
+        decimal requested_amount_idr
+        int installment_count "Jumlah Termin"
+        date deferred_until "Batas Penundaan"
+        string status "REQUESTED | APPROVED | REJECTED"
+        int requested_by_id FK
+        int approved_by_id FK "Kadishub"
+    }
+
+    Warning {
+        int id PK
+        string warning_number "Unique - SP-I-DISHUB/..."
+        int port_id FK
+        int operator_id FK
+        int invoice_id FK
+        string warning_level "TEGURAN_1 | TEGURAN_2 | TEGURAN_3"
+        string status "SENT | RESOLVED"
+        int issued_by_id FK
+    }
+
+    AuditLog {
+        int id PK
+        int actor_id FK "Nullable"
+        string action "PAYMENT_VERIFIED | INVOICE_VOID"
+        string entity_name "Invoice | Payment"
+        string entity_id
+        json before_data
+        json after_data
+        datetime created_at
+    }
+
+    %% ========================================================
+    %% 5. GATE TICKETING (ZERO DISCREPANCY)
+    %% ========================================================
+
+    GateTicketBook {
+        int id PK
+        int port_id FK
+        string book_code "Unique - KRC-PMK-ORANG-01"
+        string ticket_category "PAS_ORANG | MOTOR | MOBIL | MB"
+        int serial_start
+        int serial_end
+        decimal nominal_per_ticket
+        string status "STOK | ACTIVE | HABIS"
+        string porporasi_number "Porporasi Bapenda"
+    }
+
+    GateWardenHandover {
+        int id PK
+        int port_id FK
+        int book_id FK
+        string warden_name "Petugas Loket Gerbang"
+        int dispatched_serial_start
+        int dispatched_serial_end
+        int last_returned_serial
+        int sold_qty
+        decimal expected_amount_idr
+        decimal actual_cash_settled_idr
+        decimal unmatched_amount_idr "Wajib 0 (Zero Discrepancy)"
+        string status "DISTRIBUTED | SETTLED"
+    }
+
+    %% ========================================================
+    %% 6. PORT ASSETS, LEASES (PKS) & MAINTENANCE
+    %% ========================================================
+
+    PortAsset {
+        int id PK
+        int port_id FK
+        string asset_code "Unique - AST-PMK-KIOS-01"
+        string name "Kios Mama Papua | Gudang Lini I"
+        string asset_type "KIOS | GUDANG | LAHAN_GALANGAN | IKLAN"
+        decimal area_sqm "Luas m2"
+        decimal annual_rate_per_sqm_idr
+        string status "AVAILABLE | LEASED | MAINTENANCE"
+        string gis_coordinates "Latitude Longitude"
+    }
+
+    AssetLease {
+        int id PK
+        string contract_number "Unique - PKS/DISHUB/01/2024"
+        int port_id FK
+        int asset_id FK
+        string tenant_name "Koperasi TKBM | Mama Papua"
+        date start_date
+        date end_date
+        decimal total_annual_amount_idr
+        string status "DRAFT | ACTIVE | EXPIRED"
+        int created_by_id FK
+    }
+
+    AssetLeasePayment {
+        int id PK
+        int lease_id FK
+        string idempotency_key "Unique"
+        int period_year "2024 | 2025"
+        decimal amount_idr
+        datetime paid_at
+        int verified_by_id FK
+    }
+
+    MaintenanceTicket {
+        int id PK
+        string ticket_number "Unique - MT-PMK-2024-001"
+        int port_id FK
+        int berth_id FK "Nullable"
+        int asset_id FK "Nullable"
+        string severity "LOW | MEDIUM | HIGH | CRITICAL"
+        string title "Fender Lepas | MB Macet"
+        string status "REPORTED | IN_PROGRESS | VERIFIED_FIXED"
+        int reported_by_id FK
+        string assigned_technician
+    }
+
+    %% ========================================================
+    %% 7. CARGO, EQUIPMENT & UTILITIES
+    %% ========================================================
+
+    CargoHandlingRecord {
+        int id PK
+        string record_number "Unique - CRG-001"
+        int port_id FK
+        int visit_id FK "Nullable"
+        string cargo_category "BULOG | ANTAR_PULAU | PETI_KEMAS | SAPI"
+        decimal quantity
+        string unit_label "Ton | Unit | Ekor"
+        int duration_days
+        decimal total_amount_idr
+        string payment_status "UNPAID | PAID"
+    }
+
+    EquipmentRentalRecord {
+        int id PK
+        string rental_number "Unique - EQP-001"
+        int port_id FK
+        int visit_id FK "Nullable"
+        string equipment_type "FORKLIFT | CRANE | LONG_BOAT | GEROBAK"
+        decimal duration_hours
+        decimal total_amount_idr
+        string payment_status "UNPAID | PAID"
+    }
+
+    UtilityMeterReading {
+        int id PK
+        string reading_number "Unique - UTL-001"
+        int port_id FK
+        int visit_id FK "Nullable"
+        int asset_id FK "Nullable"
+        string utility_type "AIR_BERSIH | LISTRIK"
+        decimal meter_start
+        decimal meter_end
+        decimal volume_consumed "Liter Air Bunkering"
+        decimal total_amount_idr
+        string payment_status "UNPAID | PAID"
+    }
+
+    %% ========================================================
+    %% RELATIONSHIP MAPPINGS (CARDINALITY)
+    %% ========================================================
+
+    Port ||--o{ User : "has"
+    Port ||--o{ Berth : "operates"
+    Port ||--o{ ShipVisit : "hosts"
+    Port ||--o{ GateTicketBook : "issues"
+    Port ||--o{ FerryRoute : "connects"
+    Port ||--o{ PortAsset : "owns"
+
+    ShipOperator ||--o{ User : "employs"
+    ShipOperator ||--o{ Vessel : "operates"
+    ShipOperator ||--o{ Document : "holds"
+    ShipOperator ||--o{ ShipVisit : "schedules"
+    ShipOperator ||--o{ Invoice : "receives"
+    ShipOperator ||--o{ Warning : "receives"
+
+    Vessel ||--o{ Document : "certified_by"
+    Vessel ||--o{ ShipVisit : "conducts"
+
+    Berth ||--o{ BerthingRecord : "docked_at"
+    Berth ||--o{ MaintenanceTicket : "serviced_by"
+
+    FerryRoute ||--o{ VesselManifest : "routed_to"
+
+    ShipVisit ||--o{ BerthingRecord : "realizes"
+    ShipVisit ||--o{ Invoice : "billed_by"
+    ShipVisit ||--o| VesselManifest : "carries"
+    ShipVisit ||--o{ CargoHandlingRecord : "loads_unloads"
+    ShipVisit ||--o{ EquipmentRentalRecord : "rents"
+    ShipVisit ||--o{ UtilityMeterReading : "bunkers"
+
+    Invoice ||--o{ InvoiceItem : "contains"
+    Invoice ||--o{ Payment : "settled_by"
+    Invoice ||--o{ Warning : "triggers"
+    Invoice ||--o{ BillingAdjustment : "adjusted_by"
+
+    PortTariff ||--o{ InvoiceItem : "snapshots"
+
+    GateTicketBook ||--o{ GateWardenHandover : "allocated_to"
+
+    PortAsset ||--o{ AssetLease : "contracted_in"
+    PortAsset ||--o{ MaintenanceTicket : "maintained_by"
+    PortAsset ||--o{ UtilityMeterReading : "metered_by"
+
+    AssetLease ||--o{ AssetLeasePayment : "paid_by"
+

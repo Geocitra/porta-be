@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { VerificationStatus } from '@prisma/client';
+import { VerificationStatus, VesselCategory } from '@prisma/client';
 import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ScopeFilter } from '../../common/guards/port-scope.guard';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -82,11 +82,12 @@ export class VesselsService {
     });
   }
 
-  findVessels(scope: ScopeFilter) {
+  findVessels(scope: ScopeFilter, vesselCategory?: VesselCategory) {
     return this.prisma.vessel.findMany({
       where: {
         isActive: true,
         ...(scope.operatorId ? { operatorId: scope.operatorId } : {}),
+        ...(vesselCategory ? { vesselCategory } : {}),
       },
       include: {
         operator: {
@@ -116,7 +117,10 @@ export class VesselsService {
         name: dto.name,
         flag: dto.flag ?? 'Indonesia',
         grossTonnage: dto.grossTonnage,
+        lengthMeters: dto.lengthMeters,
+        draftMeters: dto.draftMeters,
         shipType: dto.shipType,
+        vesselCategory: dto.vesselCategory,
         shippingCategory: dto.shippingCategory,
         verificationStatus: scope.operatorId
           ? VerificationStatus.PENDING

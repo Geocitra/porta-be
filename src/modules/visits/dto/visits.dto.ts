@@ -1,6 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { BerthCategory, VisitActivityMode, VisitOrigin } from '@prisma/client';
-import { IsBoolean, IsDateString, IsEnum, IsInt, IsOptional, IsString } from 'class-validator';
+import { Transform } from 'class-transformer';
+import {
+  IsBoolean,
+  IsDateString,
+  IsEnum,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 
 export class CreateVisitDto {
   @ApiProperty({ example: 1 })
@@ -66,6 +75,30 @@ export class StartBerthingDto {
   @ApiProperty({ example: '2026-11-16T09:00:00.000Z' })
   @IsDateString()
   actualStartAt!: string;
+
+  @ApiPropertyOptional({
+    example: 'Dermaga barang sedang penuh, kondisi muatan darurat sembako',
+  })
+  @IsOptional()
+  @IsString()
+  overrideReason?: string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  safetyChecklistVerified?: boolean;
+}
+
+export class ApproveBerthingOverrideDto {
+  @ApiProperty({ enum: ['APPROVED', 'REJECTED'] })
+  @IsIn(['APPROVED', 'REJECTED'])
+  decision!: 'APPROVED' | 'REJECTED';
+
+  @ApiPropertyOptional({ example: 'Disetujui untuk sandar sementara maksimal 6 jam' })
+  @IsOptional()
+  @IsString()
+  approvalNotes?: string;
 }
 
 export class EndBerthingDto {

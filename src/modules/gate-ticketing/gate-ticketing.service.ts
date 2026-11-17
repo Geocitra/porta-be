@@ -11,6 +11,7 @@ import {
   GeneralTariffDomain,
   HandoverStatus,
   TerminalClass,
+  VesselCategory,
 } from '@prisma/client';
 import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ScopeFilter } from '../../common/guards/port-scope.guard';
@@ -223,9 +224,17 @@ export class GateTicketingService {
   }
 
   async createManifest(dto: CreateVesselManifestDto, actor: AuthenticatedUser) {
-    const visit = await this.prisma.shipVisit.findUnique({ where: { id: dto.visitId } });
+    const visit = await this.prisma.shipVisit.findUnique({
+      where: { id: dto.visitId },
+      include: { vessel: { select: { vesselCategory: true } } },
+    });
     if (!visit || visit.portId !== dto.portId) {
       throw new BadRequestException(`Visit #${dto.visitId} does not belong to port #${dto.portId}`);
+    }
+    if (visit.vessel.vesselCategory === VesselCategory.BARANG) {
+      throw new BadRequestException(
+        'Kapal kategori BARANG tidak dapat membuat manifest penumpang. Gunakan kategori PENUMPANG atau CAMPURAN.',
+      );
     }
 
     if (dto.ferryRouteId) {
