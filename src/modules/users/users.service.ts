@@ -34,7 +34,6 @@ const USER_PUBLIC_SELECT = {
 } as const;
 
 const PORT_BOUND_ROLES: UserRole[] = [
-  UserRole.ADMIN_PELABUHAN,
   UserRole.PETUGAS_DERMAGA,
   UserRole.BENDAHARA,
 ];
@@ -121,7 +120,7 @@ export class UsersService {
           'ADMIN_PELABUHAN hanya dapat membuat akun PETUGAS_DERMAGA atau BENDAHARA.',
         );
       }
-      if (dto.portId && dto.portId !== actor.portId) {
+      if (actor.portId && dto.portId && dto.portId !== actor.portId) {
         throw new ForbiddenException('Tidak dapat membuat pengguna untuk pelabuhan lain.');
       }
     }
@@ -137,7 +136,10 @@ export class UsersService {
       if (existingUsername) throw new ConflictException('Username sudah digunakan.');
     }
 
-    const portId = actor.role === UserRole.ADMIN_PELABUHAN ? actor.portId : (dto.portId ?? null);
+    const portId =
+      actor.role === UserRole.ADMIN_PELABUHAN && actor.portId
+        ? actor.portId
+        : (dto.portId ?? null);
     const operatorId = dto.operatorId ?? null;
     const tenantId = dto.tenantId ?? null;
 

@@ -31,6 +31,12 @@ export class PortScopeGuard implements CanActivate {
       if (request.query?.portId) {
         scope.portId = Number(request.query.portId);
       }
+    } else if (user.role === UserRole.ADMIN_PELABUHAN && !user.portId) {
+      // Admin Pelabuhan tingkat UPTD (multi-pelabuhan: Umum, Barang, & Penumpang)
+      const requestedPortId = request.query?.portId ?? request.body?.portId ?? request.params?.portId;
+      if (requestedPortId !== undefined && requestedPortId !== '') {
+        scope.portId = Number(requestedPortId);
+      }
     } else if (user.role === UserRole.OPERATOR_KAPAL) {
       if (!user.operatorId) {
         throw new ForbiddenException('Operator account is not linked to any ship operator');

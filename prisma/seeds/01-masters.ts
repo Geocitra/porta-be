@@ -365,7 +365,7 @@ export async function seedMasters(prisma: PrismaClient) {
       email: 'admin.pomako@porta.mimikakab.go.id',
       fullName: 'Administrator UPTD Poumako',
       role: UserRole.ADMIN_PELABUHAN,
-      portId: pomako.id,
+      portId: null,
       operatorId: null,
     },
     {
