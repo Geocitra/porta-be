@@ -350,23 +350,27 @@ model Port {
   equipmentRentals   EquipmentRentalRecord[]
   utilityReadings    UtilityMeterReading[]
   manifests          VesselManifest[]
-  billingAdjustments BillingAdjustment[]
+  billingAdjustments         BillingAdjustment[]
+  paymentGatewayTransactions PaymentGatewayTransaction[]
 
   @@map("ports")
 }
 
 model User {
-  id           Int      @id @default(autoincrement())
-  email        String   @unique @db.VarChar(150)
-  passwordHash String   @map("password_hash") @db.VarChar(255)
-  fullName     String   @map("full_name") @db.VarChar(150)
-  role         UserRole
-  portId       Int?     @map("port_id")
-  operatorId   Int?     @map("operator_id")
-  tenantId     Int?     @map("tenant_id")
-  isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id                 Int       @id @default(autoincrement())
+  email              String    @unique @db.VarChar(150)
+  username           String?   @unique @db.VarChar(80)
+  passwordHash       String    @map("password_hash") @db.VarChar(255)
+  fullName           String    @map("full_name") @db.VarChar(150)
+  role               UserRole
+  portId             Int?      @map("port_id")
+  operatorId         Int?      @map("operator_id")
+  tenantId           Int?      @map("tenant_id")
+  isActive           Boolean   @default(true) @map("is_active")
+  mustChangePassword Boolean   @default(false) @map("must_change_password")
+  passwordChangedAt  DateTime? @map("password_changed_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
 
   port     Port?         @relation(fields: [portId], references: [id], onDelete: Restrict)
   operator ShipOperator? @relation("OperatorUsers", fields: [operatorId], references: [id], onDelete: Restrict)
@@ -390,8 +394,10 @@ model User {
   recordedEquipments EquipmentRentalRecord[] @relation("EquipmentRecorder")
   recordedUtilities  UtilityMeterReading[]   @relation("UtilityRecorder")
   recordedManifests  VesselManifest[]        @relation("ManifestRecorder")
-  requestedAdjusts   BillingAdjustment[]     @relation("AdjustmentRequester")
-  approvedAdjusts    BillingAdjustment[]     @relation("AdjustmentApprover")
+  requestedAdjusts           BillingAdjustment[]         @relation("AdjustmentRequester")
+  approvedAdjusts            BillingAdjustment[]         @relation("AdjustmentApprover")
+  updatedConfigs             SystemConfig[]              @relation("ConfigUpdater")
+  gatewayTransactions        PaymentGatewayTransaction[] @relation("GatewayTxCreator")
 
   @@index([portId])
   @@index([operatorId])
@@ -1012,11 +1018,11 @@ model AssetLeasePayment {
   periodYear     Int      @map("period_year")
   amountIdr      Decimal  @map("amount_idr") @db.Decimal(16, 2)
   paidAt         DateTime @map("paid_at")
-  verifiedById   Int      @map("verified_by_id")
+  verifiedById   Int?     @map("verified_by_id")
   createdAt      DateTime @default(now()) @map("created_at")
 
   lease      AssetLease @relation(fields: [leaseId], references: [id], onDelete: Restrict)
-  verifiedBy User       @relation("LeasePaymentVerifier", fields: [verifiedById], references: [id], onDelete: Restrict)
+  verifiedBy User?      @relation("LeasePaymentVerifier", fields: [verifiedById], references: [id], onDelete: Restrict)
 
   @@index([leaseId, periodYear])
   @@map("asset_lease_payments")
@@ -1183,4 +1189,44 @@ model BillingAdjustment {
   @@index([portId, status])
   @@index([invoiceId])
   @@map("billing_adjustments")
+}
+
+// ============================================================================
+// PAYMENT GATEWAY ADAPTER & SYSTEM FEATURE FLAGS
+// ============================================================================
+
+model SystemConfig {
+  key         String   @id @db.VarChar(80)
+  value       String   @db.Text
+  updatedById Int?     @map("updated_by_id")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  updatedBy User? @relation("ConfigUpdater", fields: [updatedById], references: [id], onDelete: Restrict)
+
+  @@map("system_configs")
+}
+
+model PaymentGatewayTransaction {
+  id             Int       @id @default(autoincrement())
+  orderId        String    @unique @map("order_id") @db.VarChar(100)
+  provider       String    @db.VarChar(30)
+  targetType     String    @map("target_type") @db.VarChar(30)
+  targetId       Int       @map("target_id")
+  portId         Int       @map("port_id")
+  amountIdr      Decimal   @map("amount_idr") @db.Decimal(16, 2)
+  snapToken      String?   @map("snap_token") @db.VarChar(255)
+  redirectUrl    String?   @map("redirect_url") @db.Text
+  status         String    @default("PENDING") @db.VarChar(30)
+  idempotencyKey String    @unique @map("idempotency_key") @db.VarChar(120)
+  paidAt         DateTime? @map("paid_at")
+  createdById    Int       @map("created_by_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  port      Port @relation(fields: [portId], references: [id], onDelete: Restrict)
+  createdBy User @relation("GatewayTxCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([targetType, targetId])
+  @@index([portId, status])
+  @@map("payment_gateway_transactions")
 }

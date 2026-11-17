@@ -1,9 +1,12 @@
 import {
   AuthorityType,
+  BerthOperationalStatus,
+  BerthServiceCategory,
   BerthType,
   BillingEligibility,
   DocumentCategory,
   OperatorProfile,
+  PortCategory,
   PrismaClient,
   UserRole,
   VerificationStatus,
@@ -13,18 +16,52 @@ import * as bcrypt from 'bcryptjs';
 export async function seedMasters(prisma: PrismaClient) {
   console.log('Seeding Master Data (Port, Berths, Operators, Users, Documents)...');
 
-  // 1. Port Poumako
+  // 1. Ports (Utama/Campuran, Khusus Barang, Khusus Penumpang/Angkutan Orang)
   const pomako = await prisma.port.upsert({
     where: { code: 'PMK' },
     update: {
-      name: 'Pelabuhan Poumako',
+      name: 'Pelabuhan Umum Poumako',
+      portCategory: PortCategory.CAMPURAN,
       location: 'Distrik Mimika Timur, Kabupaten Mimika, Papua Tengah',
       isActive: true,
     },
     create: {
       code: 'PMK',
-      name: 'Pelabuhan Poumako',
+      name: 'Pelabuhan Umum Poumako',
+      portCategory: PortCategory.CAMPURAN,
       location: 'Distrik Mimika Timur, Kabupaten Mimika, Papua Tengah',
+    },
+  });
+
+  const pomakoBarang = await prisma.port.upsert({
+    where: { code: 'PMK-BRG' },
+    update: {
+      name: 'Pelabuhan Barang & Logistik Poumako',
+      portCategory: PortCategory.BARANG,
+      location: 'Kawasan Terminal Kargo Poumako, Mimika Timur, Papua Tengah',
+      isActive: true,
+    },
+    create: {
+      code: 'PMK-BRG',
+      name: 'Pelabuhan Barang & Logistik Poumako',
+      portCategory: PortCategory.BARANG,
+      location: 'Kawasan Terminal Kargo Poumako, Mimika Timur, Papua Tengah',
+    },
+  });
+
+  const pomakoPenumpang = await prisma.port.upsert({
+    where: { code: 'PMK-PNP' },
+    update: {
+      name: 'Pelabuhan Penumpang & Angkutan Orang Poumako',
+      portCategory: PortCategory.PENUMPANG,
+      location: 'Terminal Penumpang & Penyeberangan Poumako, Mimika Timur, Papua Tengah',
+      isActive: true,
+    },
+    create: {
+      code: 'PMK-PNP',
+      name: 'Pelabuhan Penumpang & Angkutan Orang Poumako',
+      portCategory: PortCategory.PENUMPANG,
+      location: 'Terminal Penumpang & Penyeberangan Poumako, Mimika Timur, Papua Tengah',
     },
   });
 
@@ -34,61 +71,79 @@ export async function seedMasters(prisma: PrismaClient) {
       code: 'DRM-PEMDA-01',
       name: 'Dermaga Beton Nusantara Pemda',
       berthType: BerthType.DERMAGA_BESI_BETON_KAYU,
+      berthServiceCategory: BerthServiceCategory.DERMAGA_CAMPURAN,
+      operationalStatus: BerthOperationalStatus.OPEN,
       authorityType: AuthorityType.PEMDA_DISHUB,
       billingEligibility: BillingEligibility.BILLABLE,
       legalBasis: 'Perda Kab. Mimika No. 4 Tahun 2023 Lampiran XI',
       managementEvidence: 'SK Bupati Mimika No. 120/2021 Pengelolaan Dermaga Pemda Poumako',
       maxLengthMeters: 120,
+      maxDraftMeters: 8.5,
     },
     {
       code: 'TLD-PEMDA-01',
       name: 'Tambatan Talud Cenderawasih',
       berthType: BerthType.PINGGIRAN_TALUD,
+      berthServiceCategory: BerthServiceCategory.DERMAGA_BARANG,
+      operationalStatus: BerthOperationalStatus.OPEN,
       authorityType: AuthorityType.PEMDA_DISHUB,
       billingEligibility: BillingEligibility.BILLABLE,
       legalBasis: 'Perda Kab. Mimika No. 4 Tahun 2023 Lampiran XI',
       managementEvidence: 'Aset Daerah Dishub Mimika Kartu Inventaris Barang (KIB) C',
       maxLengthMeters: 60,
+      maxDraftMeters: 5.0,
     },
     {
       code: 'DRM-UPP-01',
       name: 'Dermaga UPP Kemenhub (Non-Retribusi Pemda)',
       berthType: BerthType.DERMAGA_BESI_BETON_KAYU,
+      berthServiceCategory: BerthServiceCategory.DERMAGA_PENUMPANG,
+      operationalStatus: BerthOperationalStatus.OPEN,
       authorityType: AuthorityType.UPP_KEMENHUB,
       billingEligibility: BillingEligibility.NOT_BILLABLE,
       legalBasis: 'Pasal 79 UU HKPD & PM Perhubungan No. 36 Tahun 2012',
       managementEvidence: 'Kementerian Perhubungan Kantor UPP Kelas II Pomako',
       maxLengthMeters: 150,
+      maxDraftMeters: 9.0,
     },
     {
       code: 'DOL-PEMDA-01',
       name: 'Dolphin Bressing MB Penyeberangan Ferry',
       berthType: BerthType.BRESSING_DOLPHIN_PELAMPUNG,
+      berthServiceCategory: BerthServiceCategory.DERMAGA_PENUMPANG,
+      operationalStatus: BerthOperationalStatus.OPEN,
       authorityType: AuthorityType.PEMDA_DISHUB,
       billingEligibility: BillingEligibility.BILLABLE,
       legalBasis: 'Perda Kab. Mimika No. 4 Tahun 2023 Lampiran XI',
       managementEvidence: 'Fasilitas Movable Bridge Dishub Mimika 2020',
       maxLengthMeters: 80,
+      maxDraftMeters: 6.5,
     },
     {
       code: 'DRM-PELRA-01',
       name: 'Dermaga Pelabuhan Rakyat Muara Pomako',
       berthType: BerthType.DERMAGA_BESI_BETON_KAYU,
+      berthServiceCategory: BerthServiceCategory.DERMAGA_CAMPURAN,
+      operationalStatus: BerthOperationalStatus.OPEN,
       authorityType: AuthorityType.PEMDA_DISHUB,
       billingEligibility: BillingEligibility.BILLABLE,
       legalBasis: 'Perda Kab. Mimika No. 4 Tahun 2023 Lampiran XI',
       managementEvidence: 'SK Pengelolaan Pelabuhan Tradisional Mimika Timur',
       maxLengthMeters: 50,
+      maxDraftMeters: 4.0,
     },
     {
       code: 'TUKS-MIMIKA-01',
       name: 'Dermaga TUKS Logistik Pantai Selatan',
       berthType: BerthType.DERMAGA_BESI_BETON_KAYU,
+      berthServiceCategory: BerthServiceCategory.DERMAGA_BARANG,
+      operationalStatus: BerthOperationalStatus.OPEN,
       authorityType: AuthorityType.TUKS_TERSUS,
       billingEligibility: BillingEligibility.BILLABLE,
       legalBasis: 'Perda Kab. Mimika No. 4 Tahun 2023 Lampiran XI Bagian A.2',
       managementEvidence: 'Izin Operasional TUKS No. 503/TUKS-MMK/2022',
       maxLengthMeters: 100,
+      maxDraftMeters: 7.5,
     },
   ];
 
@@ -98,16 +153,95 @@ export async function seedMasters(prisma: PrismaClient) {
       update: {
         name: b.name,
         berthType: b.berthType,
+        berthServiceCategory: b.berthServiceCategory,
+        operationalStatus: b.operationalStatus,
         authorityType: b.authorityType,
         billingEligibility: b.billingEligibility,
         legalBasis: b.legalBasis,
         managementEvidence: b.managementEvidence,
         maxLengthMeters: b.maxLengthMeters,
+        maxDraftMeters: b.maxDraftMeters,
       },
       create: {
         portId: pomako.id,
         ...b,
       },
+    });
+  }
+
+  // Berths for Pelabuhan Barang & Logistik Poumako
+  const berthsBarangData = [
+    {
+      code: 'DRM-BRG-01',
+      name: 'Dermaga Kontainer & Kargo Utama',
+      berthType: BerthType.DERMAGA_BESI_BETON_KAYU,
+      berthServiceCategory: BerthServiceCategory.DERMAGA_BARANG,
+      operationalStatus: BerthOperationalStatus.OPEN,
+      authorityType: AuthorityType.PEMDA_DISHUB,
+      billingEligibility: BillingEligibility.BILLABLE,
+      legalBasis: 'Perda Kab. Mimika No. 4 Tahun 2023 Lampiran XI',
+      managementEvidence: 'Terminal Kargo & Peti Kemas Dishub Mimika',
+      maxLengthMeters: 140,
+      maxDraftMeters: 9.0,
+    },
+    {
+      code: 'DRM-BRG-02',
+      name: 'Dermaga Curah & Logistik Antarpulau',
+      berthType: BerthType.PINGGIRAN_TALUD,
+      berthServiceCategory: BerthServiceCategory.DERMAGA_BARANG,
+      operationalStatus: BerthOperationalStatus.OPEN,
+      authorityType: AuthorityType.PEMDA_DISHUB,
+      billingEligibility: BillingEligibility.BILLABLE,
+      legalBasis: 'Perda Kab. Mimika No. 4 Tahun 2023 Lampiran XI',
+      managementEvidence: 'Terminal Bongkar Muat Logistik Mimika',
+      maxLengthMeters: 85,
+      maxDraftMeters: 6.5,
+    },
+  ];
+
+  for (const b of berthsBarangData) {
+    await prisma.berth.upsert({
+      where: { portId_code: { portId: pomakoBarang.id, code: b.code } },
+      update: b,
+      create: { portId: pomakoBarang.id, ...b },
+    });
+  }
+
+  // Berths for Pelabuhan Penumpang & Angkutan Orang Poumako
+  const berthsPenumpangData = [
+    {
+      code: 'DRM-PNP-01',
+      name: 'Dermaga Penumpang Nusantara',
+      berthType: BerthType.DERMAGA_BESI_BETON_KAYU,
+      berthServiceCategory: BerthServiceCategory.DERMAGA_PENUMPANG,
+      operationalStatus: BerthOperationalStatus.OPEN,
+      authorityType: AuthorityType.PEMDA_DISHUB,
+      billingEligibility: BillingEligibility.BILLABLE,
+      legalBasis: 'Perda Kab. Mimika No. 4 Tahun 2023 Lampiran XI',
+      managementEvidence: 'Terminal Penumpang Kapal Nusantara Dishub Mimika',
+      maxLengthMeters: 130,
+      maxDraftMeters: 8.0,
+    },
+    {
+      code: 'DRM-PNP-02',
+      name: 'Dermaga Ferry & Angkutan Orang Cepat',
+      berthType: BerthType.BRESSING_DOLPHIN_PELAMPUNG,
+      berthServiceCategory: BerthServiceCategory.DERMAGA_PENUMPANG,
+      operationalStatus: BerthOperationalStatus.OPEN,
+      authorityType: AuthorityType.PEMDA_DISHUB,
+      billingEligibility: BillingEligibility.BILLABLE,
+      legalBasis: 'Perda Kab. Mimika No. 4 Tahun 2023 Lampiran XI',
+      managementEvidence: 'Dermaga Penyeberangan ASDP & Speedboat',
+      maxLengthMeters: 75,
+      maxDraftMeters: 5.5,
+    },
+  ];
+
+  for (const b of berthsPenumpangData) {
+    await prisma.berth.upsert({
+      where: { portId_code: { portId: pomakoPenumpang.id, code: b.code } },
+      update: b,
+      create: { portId: pomakoPenumpang.id, ...b },
     });
   }
 
@@ -362,6 +496,43 @@ export async function seedMasters(prisma: PrismaClient) {
   });
   userMap.set(tenantUser.email, tenantUser.id);
 
+  // 4C. Seed 1 PENDING Operator & 1 PENDING Tenant for Admin Pelabuhan Verification Flow
+  const pendingOpEmail = 'ops@cenderawasih-baru.co.id';
+  const existingPendingOp = await prisma.shipOperator.findFirst({
+    where: { email: pendingOpEmail },
+  });
+  if (!existingPendingOp) {
+    await prisma.shipOperator.create({
+      data: {
+        name: 'PT Cenderawasih Samudera Baru',
+        npwp: '03.456.789.1-954.000',
+        phone: '081355667788',
+        email: pendingOpEmail,
+        address: 'Jl. Cenderawasih Timika Jaya No. 18, Mimika',
+        operatorProfile: OperatorProfile.INCIDENTAL,
+        verificationStatus: VerificationStatus.PENDING,
+      },
+    });
+  }
+
+  const pendingTenantEmail = 'logistik@papua-mandiri.co.id';
+  const existingPendingTenant = await prisma.tenant.findFirst({
+    where: { email: pendingTenantEmail },
+  });
+  if (!existingPendingTenant) {
+    await prisma.tenant.create({
+      data: {
+        name: 'CV Papua Logistik Mandiri',
+        npwp: '04.222.333.4-954.000',
+        nib: '9120209988776',
+        phone: '082199001122',
+        email: pendingTenantEmail,
+        address: 'Kompleks Ruko Pelabuhan Poumako Blok C4, Mimika',
+        verificationStatus: VerificationStatus.PENDING,
+      },
+    });
+  }
+
   // 5. Seed Verified Onboarding Documents for Operators
 
   for (const [email, opId] of operatorMap.entries()) {
@@ -401,6 +572,6 @@ export async function seedMasters(prisma: PrismaClient) {
   }
 
   console.log('Master data seeded successfully.');
-  return { pomako, operatorMap, userMap };
+  return { pomako, pomakoBarang, pomakoPenumpang, operatorMap, userMap };
 }
 

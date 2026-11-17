@@ -136,7 +136,7 @@ export class VisitsController {
   }
 
   @Post(':id/berthings/:berthingId/approve-override')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.ADMIN_PELABUHAN)
   approveBerthingOverride(
     @Param('id', ParseIntPipe) id: number,
     @Param('berthingId', ParseIntPipe) berthingId: number,

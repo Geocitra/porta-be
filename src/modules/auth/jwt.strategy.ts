@@ -8,6 +8,7 @@ import { AuthenticatedUser } from '../../common/decorators/current-user.decorato
 export interface JwtPayload {
   sub: number;
   email: string;
+  iat?: number;
 }
 
 @Injectable()
@@ -29,12 +30,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       select: {
         id: true,
         email: true,
+        username: true,
         fullName: true,
         role: true,
         portId: true,
         operatorId: true,
         tenantId: true,
         isActive: true,
+        mustChangePassword: true,
+        passwordChangedAt: true,
       },
     });
 
@@ -42,14 +46,26 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('User is inactive or does not exist');
     }
 
+    if (
+      user.passwordChangedAt &&
+      payload.iat &&
+      payload.iat * 1000 < user.passwordChangedAt.getTime() - 1000
+    ) {
+      throw new UnauthorizedException(
+        'Sesi berakhir karena kata sandi telah diubah. Silakan login kembali.',
+      );
+    }
+
     return {
       id: user.id,
       email: user.email,
+      username: user.username,
       fullName: user.fullName,
       role: user.role,
       portId: user.portId,
       operatorId: user.operatorId,
       tenantId: user.tenantId,
+      mustChangePassword: user.mustChangePassword,
     };
   }
 }

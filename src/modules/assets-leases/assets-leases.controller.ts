@@ -22,10 +22,13 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { AssetsLeasesService } from './assets-leases.service';
 import {
   CreateAssetLeaseDto,
+  CreateMasterTenantDto,
   CreatePortAssetDto,
   RecordLeasePaymentDto,
   RejectAssetLeaseDto,
   RequestAssetLeaseDto,
+  UpdateMasterTenantDto,
+  UpdatePortAssetDto,
   UploadTenantDocumentDto,
   VerifyTenantDto,
 } from './dto/assets-leases.dto';
@@ -41,6 +44,21 @@ export class AssetsLeasesController {
   @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
   listTenants() {
     return this.assetsLeasesService.listTenants();
+  }
+
+  @Post('tenants')
+  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  createMasterTenant(@Body() dto: CreateMasterTenantDto) {
+    return this.assetsLeasesService.createMasterTenant(dto);
+  }
+
+  @Patch('tenants/:id')
+  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  updateMasterTenant(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateMasterTenantDto,
+  ) {
+    return this.assetsLeasesService.updateMasterTenant(id, dto);
   }
 
   @Get('tenants/me')
@@ -62,7 +80,7 @@ export class AssetsLeasesController {
   }
 
   @Patch('tenants/:id/verify')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.ADMIN_PELABUHAN)
   verifyTenant(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: VerifyTenantDto,
@@ -82,9 +100,18 @@ export class AssetsLeasesController {
     return this.assetsLeasesService.createAsset(dto, actor);
   }
 
+  @Patch('assets/:id')
+  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  updateAsset(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdatePortAssetDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.assetsLeasesService.updateAsset(id, dto, actor);
+  }
+
   @Get('leases')
   @Roles(
-    UserRole.SUPERADMIN,
     UserRole.ADMIN_PELABUHAN,
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
@@ -105,7 +132,7 @@ export class AssetsLeasesController {
   }
 
   @Post('leases')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.ADMIN_PELABUHAN)
   createLease(
     @Body() dto: CreateAssetLeaseDto,
     @CurrentUser() actor: AuthenticatedUser,
@@ -115,7 +142,7 @@ export class AssetsLeasesController {
   }
 
   @Patch('leases/:id/approve')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.ADMIN_PELABUHAN)
   approveLease(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() actor: AuthenticatedUser,
@@ -125,7 +152,7 @@ export class AssetsLeasesController {
   }
 
   @Patch('leases/:id/reject')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.ADMIN_PELABUHAN)
   rejectLease(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RejectAssetLeaseDto,

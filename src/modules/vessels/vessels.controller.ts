@@ -5,6 +5,7 @@ import {
   Param,
   ParseEnumPipe,
   ParseIntPipe,
+  Patch,
   Post,
   Query,
   Req,
@@ -23,6 +24,8 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import {
   CreateOperatorDto,
   CreateVesselDto,
+  UpdateOperatorDto,
+  UpdateVesselDto,
   UploadDocumentDto,
   VerifyEntityDto,
 } from './dto/vessels.dto';
@@ -54,8 +57,17 @@ export class VesselsController {
     return this.vesselsService.createOperator(dto);
   }
 
-  @Post('operators/:id/verify')
+  @Patch('operators/:id')
   @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  updateOperator(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateOperatorDto,
+  ) {
+    return this.vesselsService.updateOperator(id, dto);
+  }
+
+  @Post('operators/:id/verify')
+  @Roles(UserRole.ADMIN_PELABUHAN)
   verifyOperator(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: VerifyEntityDto,
@@ -112,8 +124,17 @@ export class VesselsController {
     return this.vesselsService.createVessel(dto, req.portScope);
   }
 
-  @Post(':id/verify')
+  @Patch(':id')
   @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  updateVessel(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateVesselDto,
+  ) {
+    return this.vesselsService.updateVessel(id, dto);
+  }
+
+  @Post(':id/verify')
+  @Roles(UserRole.ADMIN_PELABUHAN)
   verifyVessel(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: VerifyEntityDto,

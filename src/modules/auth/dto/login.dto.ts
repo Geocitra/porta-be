@@ -1,10 +1,24 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsString, MinLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class LoginDto {
-  @ApiProperty({ example: 'admin.pomako@porta.mimikakab.go.id' })
-  @IsEmail()
-  email!: string;
+  @ApiPropertyOptional({
+    example: 'admin.pomako@porta.mimikakab.go.id',
+    description: 'Email atau username pengguna',
+  })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  identifier?: string;
+
+  @ApiPropertyOptional({
+    example: 'admin.pomako@porta.mimikakab.go.id',
+    description: 'Alias backward-compatible untuk identifier',
+  })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  email?: string;
 
   @ApiProperty({ example: 'Porta123!' })
   @IsString()
@@ -12,4 +26,3 @@ export class LoginDto {
   @MinLength(6)
   password!: string;
 }
-

@@ -4,11 +4,13 @@ import { UserRole } from '@prisma/client';
 export interface AuthenticatedUser {
   id: number;
   email: string;
+  username: string | null;
   fullName: string;
   role: UserRole;
   portId: number | null;
   operatorId: number | null;
   tenantId: number | null;
+  mustChangePassword: boolean;
 }
 
 export const CurrentUser = createParamDecorator(

@@ -15,10 +15,13 @@ import { DocNumberUtil } from '../../common/utils/doc-number.util';
 import { StorageService, UploadedFilePayload } from '../../common/utils/storage.service';
 import {
   CreateAssetLeaseDto,
+  CreateMasterTenantDto,
   CreatePortAssetDto,
   RecordLeasePaymentDto,
   RejectAssetLeaseDto,
   RequestAssetLeaseDto,
+  UpdateMasterTenantDto,
+  UpdatePortAssetDto,
   UploadTenantDocumentDto,
   VerifyTenantDto,
 } from './dto/assets-leases.dto';
@@ -33,8 +36,30 @@ export class AssetsLeasesService {
 
   listTenants() {
     return this.prisma.tenant.findMany({
+      where: { isActive: true },
       include: { documents: true },
       orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  createMasterTenant(dto: CreateMasterTenantDto) {
+    return this.prisma.tenant.create({
+      data: {
+        ...dto,
+        verificationStatus: VerificationStatus.VERIFIED,
+      },
+      include: { documents: true },
+    });
+  }
+
+  async updateMasterTenant(tenantId: number, dto: UpdateMasterTenantDto) {
+    const existing = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+    if (!existing) throw new NotFoundException(`Tenant #${tenantId} not found`);
+
+    return this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: dto,
+      include: { documents: true },
     });
   }
 
@@ -140,6 +165,28 @@ export class AssetsLeasesService {
         tx,
       });
       return asset;
+    });
+  }
+
+  async updateAsset(assetId: number, dto: UpdatePortAssetDto, actor: AuthenticatedUser) {
+    const existing = await this.prisma.portAsset.findUnique({ where: { id: assetId } });
+    if (!existing) throw new NotFoundException(`Asset #${assetId} not found`);
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.portAsset.update({
+        where: { id: assetId },
+        data: dto,
+      });
+      await this.auditLog.record({
+        actorId: actor.id,
+        action: 'PORT_ASSET_UPDATED',
+        entityName: 'port_assets',
+        entityId: assetId,
+        beforeData: existing,
+        afterData: updated,
+        tx,
+      });
+      return updated;
     });
   }
 

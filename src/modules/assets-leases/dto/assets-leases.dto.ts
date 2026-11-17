@@ -1,7 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { BillingEligibility, DocumentCategory, PortAssetType, VerificationStatus } from '@prisma/client';
 import {
+  BillingEligibility,
+  DocumentCategory,
+  PortAssetStatus,
+  PortAssetType,
+  VerificationStatus,
+} from '@prisma/client';
+import {
+  IsBoolean,
   IsDateString,
+  IsEmail,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -160,5 +168,120 @@ export class RecordLeasePaymentDto {
   @ApiProperty({ example: '2026-11-16T10:00:00.000Z' })
   @IsDateString()
   paidAt!: string;
+}
+
+export class CreateMasterTenantDto {
+  @ApiProperty({ example: 'CV Mimika Berkah' })
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  npwp?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  nib?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  address?: string;
+}
+
+export class UpdateMasterTenantDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  name?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  npwp?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  nib?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+export class UpdatePortAssetDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  name?: string;
+
+  @ApiPropertyOptional({ enum: PortAssetType })
+  @IsOptional()
+  @IsEnum(PortAssetType)
+  assetType?: PortAssetType;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  areaSqm?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  annualRatePerSqmIdr?: number;
+
+  @ApiPropertyOptional({ enum: BillingEligibility })
+  @IsOptional()
+  @IsEnum(BillingEligibility)
+  billingEligibility?: BillingEligibility;
+
+  @ApiPropertyOptional({ enum: PortAssetStatus })
+  @IsOptional()
+  @IsEnum(PortAssetStatus)
+  status?: PortAssetStatus;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  gisCoordinates?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  legalBasis?: string;
 }
 
