@@ -30,6 +30,11 @@ export class CreateUserDto {
   @IsOptional()
   @IsInt()
   operatorId?: number;
+
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional()
+  @IsInt()
+  tenantId?: number;
 }
 
 export class UpdateUserStatusDto {

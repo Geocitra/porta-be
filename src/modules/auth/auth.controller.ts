@@ -4,7 +4,7 @@ import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
-import { RegisterOperatorDto } from './dto/register.dto';
+import { RegisterOperatorDto, RegisterTenantDto } from './dto/register.dto';
 
 @ApiTags('Auth & Operator Onboarding')
 @Controller('auth')
@@ -14,6 +14,11 @@ export class AuthController {
   @Post('register')
   registerOperator(@Body() dto: RegisterOperatorDto) {
     return this.authService.registerOperator(dto);
+  }
+
+  @Post('register-tenant')
+  registerTenant(@Body() dto: RegisterTenantDto) {
+    return this.authService.registerTenant(dto);
   }
 
   @Post('login')

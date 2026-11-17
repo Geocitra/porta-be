@@ -322,8 +322,47 @@ export async function seedMasters(prisma: PrismaClient) {
     userMap.set(u.email, userRec.id);
   }
 
-  // 5. Seed Verified Onboarding Documents for Operators
+  // 4B. Seed Demo Verified Tenant & User Account
   const adminId = userMap.get('admin.pomako@porta.mimikakab.go.id')!;
+  const existingTenant = await prisma.tenant.findFirst({
+    where: { email: 'tenant@sinarpapua.co.id' },
+  });
+  const demoTenant =
+    existingTenant ??
+    (await prisma.tenant.create({
+      data: {
+        name: 'CV Sinar Papua Mandiri',
+        npwp: '02.111.222.3-954.000',
+        nib: '9120102938475',
+        phone: '081234567890',
+        email: 'tenant@sinarpapua.co.id',
+        address: 'Jl. Pelabuhan Poumako Kios No. 2, Mimika',
+        verificationStatus: VerificationStatus.VERIFIED,
+        verifiedAt: new Date(),
+        verifiedById: adminId,
+      },
+    }));
+
+  const tenantUser = await prisma.user.upsert({
+    where: { email: 'tenant@sinarpapua.co.id' },
+    update: {
+      fullName: 'Siti Aminah (CV Sinar Papua Mandiri)',
+      role: UserRole.TENANT,
+      portId: null,
+      tenantId: demoTenant.id,
+    },
+    create: {
+      email: 'tenant@sinarpapua.co.id',
+      passwordHash,
+      fullName: 'Siti Aminah (CV Sinar Papua Mandiri)',
+      role: UserRole.TENANT,
+      portId: null,
+      tenantId: demoTenant.id,
+    },
+  });
+  userMap.set(tenantUser.email, tenantUser.id);
+
+  // 5. Seed Verified Onboarding Documents for Operators
 
   for (const [email, opId] of operatorMap.entries()) {
     const existingDoc = await prisma.document.findFirst({

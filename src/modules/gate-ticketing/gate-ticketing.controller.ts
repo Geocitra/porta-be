@@ -52,6 +52,17 @@ export class GateTicketingController {
     return this.gateTicketingService.createTicketBook(dto, actor);
   }
 
+  @Get('handovers')
+  @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+    UserRole.BENDAHARA,
+  )
+  listHandovers(@Req() req: { portScope: ScopeFilter }) {
+    return this.gateTicketingService.listHandovers(req.portScope);
+  }
+
   @Post('handovers/open')
   @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.PETUGAS_DERMAGA)
   openHandover(

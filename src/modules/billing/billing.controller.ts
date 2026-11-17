@@ -45,6 +45,13 @@ export class BillingController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
   @Get('invoices')
+  @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.BENDAHARA,
+    UserRole.DISHUB_EKSEKUTIF,
+    UserRole.OPERATOR_KAPAL,
+  )
   findInvoices(@Req() req: { portScope: ScopeFilter }) {
     return this.billingService.findInvoices(req.portScope);
   }

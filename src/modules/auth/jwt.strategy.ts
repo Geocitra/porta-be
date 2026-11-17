@@ -33,6 +33,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         role: true,
         portId: true,
         operatorId: true,
+        tenantId: true,
         isActive: true,
       },
     });
@@ -48,6 +49,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       role: user.role,
       portId: user.portId,
       operatorId: user.operatorId,
+      tenantId: user.tenantId,
     };
   }
 }

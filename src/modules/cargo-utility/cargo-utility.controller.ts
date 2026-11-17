@@ -1,4 +1,4 @@
-import { Body, Controller, Param, ParseIntPipe, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -56,6 +56,18 @@ export class CargoUtilityController {
     @Req() req: { portScope: ScopeFilter },
   ) {
     return this.cargoUtilityService.payEquipmentRental(id, dto, actor, req.portScope);
+  }
+
+  @Get('utilities')
+  @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+    UserRole.BENDAHARA,
+    UserRole.TENANT,
+  )
+  listUtilities(@Req() req: { portScope: ScopeFilter }) {
+    return this.cargoUtilityService.listUtilities(req.portScope);
   }
 
   @Post('utilities')

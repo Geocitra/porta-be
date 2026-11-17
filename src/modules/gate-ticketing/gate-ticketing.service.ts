@@ -41,6 +41,14 @@ export class GateTicketingService {
     });
   }
 
+  listHandovers(scope: ScopeFilter) {
+    return this.prisma.gateWardenHandover.findMany({
+      where: { ...(scope.portId ? { portId: scope.portId } : {}) },
+      include: { book: true },
+      orderBy: { dispatchTime: 'desc' },
+    });
+  }
+
   async createTicketBook(dto: CreateGateTicketBookDto, actor: AuthenticatedUser) {
     if (dto.serialEnd < dto.serialStart) {
       throw new BadRequestException('serialEnd must be >= serialStart');

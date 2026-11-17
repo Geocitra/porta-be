@@ -17,6 +17,7 @@ enum UserRole {
   PETUGAS_DERMAGA
   BENDAHARA
   OPERATOR_KAPAL
+  TENANT
   DISHUB_EKSEKUTIF
 }
 
@@ -237,8 +238,10 @@ enum PortAssetStatus {
 }
 
 enum LeaseStatus {
+  REQUESTED
   DRAFT
   ACTIVE
+  REJECTED
   EXPIRED
   TERMINATED
 }
@@ -360,14 +363,17 @@ model User {
   role         UserRole
   portId       Int?     @map("port_id")
   operatorId   Int?     @map("operator_id")
+  tenantId     Int?     @map("tenant_id")
   isActive     Boolean  @default(true) @map("is_active")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   port     Port?         @relation(fields: [portId], references: [id], onDelete: Restrict)
   operator ShipOperator? @relation("OperatorUsers", fields: [operatorId], references: [id], onDelete: Restrict)
+  tenant   Tenant?       @relation("TenantUsers", fields: [tenantId], references: [id], onDelete: Restrict)
 
   verifiedOperators ShipOperator[]   @relation("OperatorVerifiedBy")
+  verifiedTenants   Tenant[]         @relation("TenantVerifiedBy")
   verifiedVessels   Vessel[]         @relation("VesselVerifiedBy")
   uploadedDocuments Document[]       @relation("DocumentUploadedBy")
   recordedBerthings  BerthingRecord[] @relation("RecordedBy")
@@ -389,6 +395,7 @@ model User {
 
   @@index([portId])
   @@index([operatorId])
+  @@index([tenantId])
   @@map("users")
 }
 
@@ -447,6 +454,30 @@ model ShipOperator {
   @@map("ship_operators")
 }
 
+model Tenant {
+  id                 Int                @id @default(autoincrement())
+  name               String             @db.VarChar(200)
+  npwp               String?            @db.VarChar(50)
+  nib                String?            @db.VarChar(50)
+  phone              String?            @db.VarChar(50)
+  email              String?            @db.VarChar(150)
+  address            String?            @db.Text
+  verificationStatus VerificationStatus @default(PENDING) @map("verification_status")
+  rejectionReason    String?            @map("rejection_reason") @db.Text
+  verifiedAt         DateTime?          @map("verified_at")
+  verifiedById       Int?               @map("verified_by_id")
+  isActive           Boolean            @default(true) @map("is_active")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  verifiedBy User?        @relation("TenantVerifiedBy", fields: [verifiedById], references: [id], onDelete: Restrict)
+  users      User[]       @relation("TenantUsers")
+  documents  Document[]
+  leases     AssetLease[]
+
+  @@map("tenants")
+}
+
 model Vessel {
   id                 Int                @id @default(autoincrement())
   operatorId         Int                @map("operator_id")
@@ -479,7 +510,8 @@ model Vessel {
 
 model Document {
   id                 Int                @id @default(autoincrement())
-  operatorId         Int                @map("operator_id")
+  operatorId         Int?               @map("operator_id")
+  tenantId           Int?               @map("tenant_id")
   vesselId           Int?               @map("vessel_id")
   category           DocumentCategory
   documentNumber     String?            @map("document_number") @db.VarChar(100)
@@ -492,11 +524,13 @@ model Document {
   createdAt          DateTime           @default(now()) @map("created_at")
   updatedAt          DateTime           @updatedAt @map("updated_at")
 
-  operator   ShipOperator @relation(fields: [operatorId], references: [id], onDelete: Restrict)
-  vessel     Vessel?      @relation(fields: [vesselId], references: [id], onDelete: Restrict)
-  uploadedBy User         @relation("DocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  operator   ShipOperator? @relation(fields: [operatorId], references: [id], onDelete: Restrict)
+  tenant     Tenant?       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  vessel     Vessel?       @relation(fields: [vesselId], references: [id], onDelete: Restrict)
+  uploadedBy User          @relation("DocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
 
   @@index([operatorId])
+  @@index([tenantId])
   @@index([vesselId])
   @@map("documents")
 }
@@ -947,6 +981,7 @@ model AssetLease {
   contractNumber       String      @unique @map("contract_number") @db.VarChar(60)
   portId               Int         @map("port_id")
   assetId              Int         @map("asset_id")
+  tenantId             Int?        @map("tenant_id")
   tenantName           String      @map("tenant_name") @db.VarChar(150)
   tenantNpwp           String?     @map("tenant_npwp") @db.VarChar(50)
   tenantPhone          String?     @map("tenant_phone") @db.VarChar(50)
@@ -954,16 +989,19 @@ model AssetLease {
   endDate              DateTime    @map("end_date") @db.Date
   totalAnnualAmountIdr Decimal     @map("total_annual_amount_idr") @db.Decimal(16, 2)
   status               LeaseStatus @default(DRAFT)
+  rejectionReason      String?     @map("rejection_reason") @db.Text
   createdById          Int         @map("created_by_id")
   createdAt            DateTime    @default(now()) @map("created_at")
   updatedAt            DateTime    @updatedAt @map("updated_at")
 
   port      Port                @relation(fields: [portId], references: [id], onDelete: Restrict)
   asset     PortAsset           @relation(fields: [portId, assetId], references: [portId, id], onDelete: Restrict)
+  tenant    Tenant?             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   createdBy User                @relation("LeaseCreator", fields: [createdById], references: [id], onDelete: Restrict)
   payments  AssetLeasePayment[]
 
   @@index([portId, status])
+  @@index([tenantId])
   @@map("asset_leases")
 }
 

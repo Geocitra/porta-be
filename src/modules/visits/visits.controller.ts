@@ -38,6 +38,14 @@ export class VisitsController {
   constructor(private readonly visitsService: VisitsService) {}
 
   @Get()
+  @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+    UserRole.BENDAHARA,
+    UserRole.DISHUB_EKSEKUTIF,
+    UserRole.OPERATOR_KAPAL,
+  )
   @ApiQuery({ name: 'vesselCategory', enum: VesselCategory, required: false })
   findAll(
     @Req() req: { portScope: ScopeFilter },
@@ -54,6 +62,14 @@ export class VisitsController {
   }
 
   @Get(':id')
+  @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+    UserRole.BENDAHARA,
+    UserRole.DISHUB_EKSEKUTIF,
+    UserRole.OPERATOR_KAPAL,
+  )
   findById(@Param('id', ParseIntPipe) id: number, @Req() req: { portScope: ScopeFilter }) {
     return this.visitsService.findById(id, req.portScope);
   }

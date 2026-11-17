@@ -1,5 +1,18 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Req, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Req,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -11,6 +24,10 @@ import {
   CreateAssetLeaseDto,
   CreatePortAssetDto,
   RecordLeasePaymentDto,
+  RejectAssetLeaseDto,
+  RequestAssetLeaseDto,
+  UploadTenantDocumentDto,
+  VerifyTenantDto,
 } from './dto/assets-leases.dto';
 
 @ApiTags('Phase 2: Port Assets & Leases (Kios/Gudang/Lahan)')
@@ -19,6 +36,40 @@ import {
 @Controller('assets-leases')
 export class AssetsLeasesController {
   constructor(private readonly assetsLeasesService: AssetsLeasesService) {}
+
+  @Get('tenants')
+  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  listTenants() {
+    return this.assetsLeasesService.listTenants();
+  }
+
+  @Get('tenants/me')
+  @Roles(UserRole.TENANT)
+  getMyTenantProfile(@CurrentUser() actor: AuthenticatedUser) {
+    return this.assetsLeasesService.getMyTenantProfile(actor);
+  }
+
+  @Post('tenants/me/documents')
+  @Roles(UserRole.TENANT)
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file'))
+  uploadMyTenantDocument(
+    @Body() dto: UploadTenantDocumentDto,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.assetsLeasesService.uploadTenantDocument(dto, file, actor);
+  }
+
+  @Patch('tenants/:id/verify')
+  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  verifyTenant(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: VerifyTenantDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.assetsLeasesService.verifyTenant(id, dto, actor);
+  }
 
   @Get('assets')
   listAssets(@Req() req: { portScope: ScopeFilter }) {
@@ -37,9 +88,20 @@ export class AssetsLeasesController {
     UserRole.ADMIN_PELABUHAN,
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
+    UserRole.TENANT,
   )
   listLeases(@Req() req: { portScope: ScopeFilter }) {
     return this.assetsLeasesService.listLeases(req.portScope);
+  }
+
+  @Post('leases/request')
+  @Roles(UserRole.TENANT)
+  requestLease(
+    @Body() dto: RequestAssetLeaseDto,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.assetsLeasesService.requestLease(dto, actor, req.portScope);
   }
 
   @Post('leases')
@@ -50,6 +112,27 @@ export class AssetsLeasesController {
     @Req() req: { portScope: ScopeFilter },
   ) {
     return this.assetsLeasesService.createAndActivateLease(dto, actor, req.portScope);
+  }
+
+  @Patch('leases/:id/approve')
+  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  approveLease(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.assetsLeasesService.approveLeaseRequest(id, actor, req.portScope);
+  }
+
+  @Patch('leases/:id/reject')
+  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  rejectLease(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RejectAssetLeaseDto,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.assetsLeasesService.rejectLeaseRequest(id, dto, actor, req.portScope);
   }
 
   @Post('leases/:id/payments')

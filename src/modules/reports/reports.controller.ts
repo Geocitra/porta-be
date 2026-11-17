@@ -43,5 +43,11 @@ export class ReportsController {
   getGisOpportunities(@Req() req: { portScope: ScopeFilter }) {
     return this.reportsService.getGisOpportunities(req.portScope);
   }
+
+  @Get('audit-logs')
+  @Roles(UserRole.SUPERADMIN)
+  getAuditLogs() {
+    return this.reportsService.getAuditLogs();
+  }
 }
 

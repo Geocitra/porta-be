@@ -32,6 +32,7 @@ export class UsersService {
         role: true,
         portId: true,
         operatorId: true,
+        tenantId: true,
         isActive: true,
         createdAt: true,
       },
@@ -63,6 +64,12 @@ export class UsersService {
     ) {
       throw new BadRequestException(`Role ${dto.role} requires portId`);
     }
+    if (dto.role === UserRole.OPERATOR_KAPAL && !dto.operatorId) {
+      throw new BadRequestException('Role OPERATOR_KAPAL requires operatorId');
+    }
+    if (dto.role === UserRole.TENANT && !dto.tenantId) {
+      throw new BadRequestException('Role TENANT requires tenantId');
+    }
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
@@ -75,6 +82,7 @@ export class UsersService {
           role: dto.role,
           portId,
           operatorId: dto.operatorId ?? null,
+          tenantId: dto.tenantId ?? null,
         },
         select: {
           id: true,
@@ -83,6 +91,7 @@ export class UsersService {
           role: true,
           portId: true,
           operatorId: true,
+          tenantId: true,
           isActive: true,
         },
       });
@@ -108,6 +117,18 @@ export class UsersService {
   ) {
     const target = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!target) throw new NotFoundException(`User #${userId} not found`);
+    if (target.id === actor.id) {
+      throw new ForbiddenException('Cannot change your own account status');
+    }
+    if (
+      actor.role === UserRole.ADMIN_PELABUHAN &&
+      target.role !== UserRole.PETUGAS_DERMAGA &&
+      target.role !== UserRole.BENDAHARA
+    ) {
+      throw new ForbiddenException(
+        'ADMIN_PELABUHAN can only manage PETUGAS_DERMAGA or BENDAHARA accounts',
+      );
+    }
     if (scope.portId && target.portId !== scope.portId) {
       throw new ForbiddenException('Cross-port user management forbidden');
     }

@@ -8,6 +8,7 @@ export interface AuthenticatedUser {
   role: UserRole;
   portId: number | null;
   operatorId: number | null;
+  tenantId: number | null;
 }
 
 export const CurrentUser = createParamDecorator(

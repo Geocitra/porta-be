@@ -5,13 +5,15 @@ import { AuthenticatedUser } from '../decorators/current-user.decorator';
 export interface ScopeFilter {
   portId?: number;
   operatorId?: number;
+  tenantId?: number;
 }
 
 /**
- * Enforces multi-port and operator tenant isolation on every scoped endpoint.
+ * Enforces multi-port and operator/tenant isolation on every scoped endpoint.
  * - SUPERADMIN & DISHUB_EKSEKUTIF: global read/scope (can filter by query portId)
  * - ADMIN_PELABUHAN, PETUGAS_DERMAGA, BENDAHARA: strictly locked to user.portId
  * - OPERATOR_KAPAL: strictly locked to user.operatorId
+ * - TENANT: strictly locked to user.tenantId
  */
 @Injectable()
 export class PortScopeGuard implements CanActivate {
@@ -34,6 +36,11 @@ export class PortScopeGuard implements CanActivate {
         throw new ForbiddenException('Operator account is not linked to any ship operator');
       }
       scope.operatorId = user.operatorId;
+    } else if (user.role === UserRole.TENANT) {
+      if (!user.tenantId) {
+        throw new ForbiddenException('Tenant account is not linked to any tenant profile');
+      }
+      scope.tenantId = user.tenantId;
     } else {
       if (!user.portId) {
         throw new ForbiddenException('Port staff account is not assigned to any port');

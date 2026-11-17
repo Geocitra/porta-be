@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { BillingEligibility, PortAssetType } from '@prisma/client';
+import { BillingEligibility, DocumentCategory, PortAssetType, VerificationStatus } from '@prisma/client';
 import {
   IsDateString,
   IsEnum,
@@ -64,6 +64,11 @@ export class CreateAssetLeaseDto {
   @IsInt()
   assetId!: number;
 
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional()
+  @IsInt()
+  tenantId?: number;
+
   @ApiProperty({ example: 'CV Mimika Niaga' })
   @IsString()
   @IsNotEmpty()
@@ -86,6 +91,54 @@ export class CreateAssetLeaseDto {
   @ApiProperty({ example: '2026-12-31' })
   @IsDateString()
   endDate!: string;
+}
+
+export class RequestAssetLeaseDto {
+  @ApiProperty({ example: 1 })
+  @IsInt()
+  assetId!: number;
+
+  @ApiProperty({ example: '2026-01-01' })
+  @IsDateString()
+  startDate!: string;
+
+  @ApiProperty({ example: '2026-12-31' })
+  @IsDateString()
+  endDate!: string;
+}
+
+export class VerifyTenantDto {
+  @ApiProperty({ enum: [VerificationStatus.VERIFIED, VerificationStatus.REJECTED] })
+  @IsEnum(VerificationStatus)
+  verificationStatus!: VerificationStatus;
+
+  @ApiPropertyOptional({ example: 'Dokumen NIB/NPWP sesuai dan valid.' })
+  @IsOptional()
+  @IsString()
+  rejectionReason?: string;
+}
+
+export class RejectAssetLeaseDto {
+  @ApiProperty({ example: 'Aset sedang dalam agenda pemeliharaan berkala.' })
+  @IsString()
+  @IsNotEmpty()
+  rejectionReason!: string;
+}
+
+export class UploadTenantDocumentDto {
+  @ApiProperty({ enum: DocumentCategory })
+  @IsEnum(DocumentCategory)
+  category!: DocumentCategory;
+
+  @ApiPropertyOptional({ example: 'NIB-912010293847' })
+  @IsOptional()
+  @IsString()
+  documentNumber?: string;
+
+  @ApiPropertyOptional({ example: 'Dokumen legalitas NIB usaha' })
+  @IsOptional()
+  @IsString()
+  notes?: string;
 }
 
 export class RecordLeasePaymentDto {

@@ -17,6 +17,13 @@ export class WarningsController {
   constructor(private readonly warningsService: WarningsService) {}
 
   @Get()
+  @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.BENDAHARA,
+    UserRole.DISHUB_EKSEKUTIF,
+    UserRole.OPERATOR_KAPAL,
+  )
   findAll(@Req() req: { portScope: ScopeFilter }) {
     return this.warningsService.findAll(req.portScope);
   }
