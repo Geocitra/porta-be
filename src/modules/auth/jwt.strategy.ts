@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
+import { AssignmentStatus } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
@@ -25,6 +26,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload): Promise<AuthenticatedUser> {
+    const now = new Date();
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
       select: {
@@ -34,11 +36,30 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         fullName: true,
         role: true,
         portId: true,
+        divisionId: true,
         operatorId: true,
         tenantId: true,
         isActive: true,
         mustChangePassword: true,
         passwordChangedAt: true,
+        assignments: {
+          where: {
+            status: AssignmentStatus.ACTIVE,
+            startDate: { lte: now },
+            OR: [{ endDate: null }, { endDate: { gte: now } }],
+          },
+          select: {
+            id: true,
+            assignmentCode: true,
+            role: true,
+            portId: true,
+            terminalId: true,
+            berthId: true,
+            zoneId: true,
+            taskTypes: true,
+            permissionCodes: true,
+          },
+        },
       },
     });
 
@@ -63,10 +84,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       fullName: user.fullName,
       role: user.role,
       portId: user.portId,
+      divisionId: user.divisionId,
       operatorId: user.operatorId,
       tenantId: user.tenantId,
       mustChangePassword: user.mustChangePassword,
+      activeAssignments: user.assignments,
     };
   }
 }
-

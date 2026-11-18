@@ -4,6 +4,7 @@ import {
   IsArray,
   IsBoolean,
   IsDateString,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -48,7 +49,12 @@ export class CreateDailyPortReportDto {
   @IsInt()
   portId!: number;
 
-  @ApiProperty({ example: '2026-11-16' })
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional()
+  @IsInt()
+  terminalId?: number;
+
+  @ApiProperty({ example: '2026-11-18' })
   @IsDateString()
   reportDate!: string;
 
@@ -57,10 +63,21 @@ export class CreateDailyPortReportDto {
   @IsString()
   generalNotes?: string;
 
-  @ApiProperty({ type: [DailyReportItemDto] })
+  @ApiPropertyOptional({ type: [DailyReportItemDto] })
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => DailyReportItemDto)
-  items!: DailyReportItemDto[];
+  items?: DailyReportItemDto[];
 }
 
+export class ReviewDailyReportDto {
+  @ApiProperty({ enum: ['APPROVE', 'RETURN'] })
+  @IsIn(['APPROVE', 'RETURN'])
+  decision!: 'APPROVE' | 'RETURN';
+
+  @ApiPropertyOptional({ example: 'Rekap harian telah sesuai dengan seluruh task petugas.' })
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}

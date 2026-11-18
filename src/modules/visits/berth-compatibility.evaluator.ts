@@ -4,6 +4,7 @@ import {
   BerthServiceCategory,
   BerthValidationResult,
   PortCategory,
+  ShipType,
   VesselCategory,
 } from '@prisma/client';
 
@@ -13,9 +14,14 @@ export interface BerthCompatibilityInput {
   berthServiceCategory: BerthServiceCategory;
   berthMaxLengthMeters?: number | null;
   berthMaxDraftMeters?: number | null;
+  berthMaxGrossTonnage?: number | null;
+  allowedVesselCategories?: VesselCategory[];
+  allowedShipTypes?: ShipType[];
   vesselCategory: VesselCategory;
+  vesselShipType?: ShipType | null;
   vesselLengthMeters?: number | null;
   vesselDraftMeters?: number | null;
+  vesselGrossTonnage?: number | null;
 }
 
 export interface BerthCompatibilityEvaluation {
@@ -32,7 +38,7 @@ const MATCH_MAP: Record<VesselCategory, BerthServiceCategory> = {
 
 /**
  * Pure domain evaluator for 3-level Hybrid Validation (ALLOW / WARNING / BLOCK)
- * when placing a vessel onto a berth.
+ * when placing a vessel onto a berth based on technical specs and operational rules.
  */
 export function evaluateBerthCompatibility(
   input: BerthCompatibilityInput,
@@ -65,6 +71,16 @@ export function evaluateBerthCompatibility(
     );
   }
 
+  if (
+    input.berthMaxGrossTonnage != null &&
+    input.vesselGrossTonnage != null &&
+    input.vesselGrossTonnage > input.berthMaxGrossTonnage
+  ) {
+    blockReasons.push(
+      `Gross Tonnage kapal (${input.vesselGrossTonnage} GT) melebihi daya dukung maksimal dermaga (${input.berthMaxGrossTonnage} GT)`,
+    );
+  }
+
   if (blockReasons.length > 0) {
     return {
       validationResult: BerthValidationResult.BLOCK,
@@ -84,10 +100,29 @@ export function evaluateBerthCompatibility(
     );
   }
 
-  const expectedBerthCategory = MATCH_MAP[input.vesselCategory];
-  if (input.berthServiceCategory !== expectedBerthCategory) {
+  if (input.allowedVesselCategories && input.allowedVesselCategories.length > 0) {
+    if (!input.allowedVesselCategories.includes(input.vesselCategory)) {
+      warningReasons.push(
+        `Kategori kapal (${input.vesselCategory}) tidak termasuk dalam daftar kategori kapal yang diizinkan pada dermaga ini ([${input.allowedVesselCategories.join(', ')}])`,
+      );
+    }
+  } else {
+    const expectedBerthCategory = MATCH_MAP[input.vesselCategory];
+    if (input.berthServiceCategory !== expectedBerthCategory) {
+      warningReasons.push(
+        `Kategori kapal (${input.vesselCategory}) tidak sesuai dengan peruntukan dermaga (${input.berthServiceCategory})`,
+      );
+    }
+  }
+
+  if (
+    input.allowedShipTypes &&
+    input.allowedShipTypes.length > 0 &&
+    input.vesselShipType &&
+    !input.allowedShipTypes.includes(input.vesselShipType)
+  ) {
     warningReasons.push(
-      `Kategori kapal (${input.vesselCategory}) tidak sesuai dengan peruntukan dermaga (${input.berthServiceCategory})`,
+      `Jenis pelayaran kapal (${input.vesselShipType}) tidak sesuai dengan ketentuan operasional dermaga ([${input.allowedShipTypes.join(', ')}])`,
     );
   }
 

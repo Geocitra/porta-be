@@ -40,7 +40,11 @@ export class VisitsController {
   @Get()
   @Roles(
     UserRole.SUPERADMIN,
+    UserRole.KEPALA_DINAS,
+    UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
     UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
     UserRole.PETUGAS_DERMAGA,
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
@@ -56,7 +60,12 @@ export class VisitsController {
   }
 
   @Get('berthing-overrides/pending')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.PETUGAS_DERMAGA)
+  @Roles(
+    UserRole.KEPALA_PELABUHAN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+  )
   findPendingOverrides(@Req() req: { portScope: ScopeFilter }) {
     return this.visitsService.findPendingBerthingOverrides(req.portScope);
   }
@@ -64,7 +73,11 @@ export class VisitsController {
   @Get(':id')
   @Roles(
     UserRole.SUPERADMIN,
+    UserRole.KEPALA_DINAS,
+    UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
     UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
     UserRole.PETUGAS_DERMAGA,
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
@@ -75,7 +88,12 @@ export class VisitsController {
   }
 
   @Get(':id/berthings/check-compatibility')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.PETUGAS_DERMAGA)
+  @Roles(
+    UserRole.KEPALA_PELABUHAN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+  )
   @ApiQuery({ name: 'berthId', type: Number, required: true })
   checkCompatibility(
     @Param('id', ParseIntPipe) id: number,
@@ -87,8 +105,8 @@ export class VisitsController {
 
   @Post()
   @Roles(
-    UserRole.SUPERADMIN,
     UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
     UserRole.PETUGAS_DERMAGA,
     UserRole.OPERATOR_KAPAL,
   )
@@ -101,7 +119,12 @@ export class VisitsController {
   }
 
   @Post(':id/approve')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.PETUGAS_DERMAGA)
+  @Roles(
+    UserRole.KEPALA_PELABUHAN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+  )
   approveVisit(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthenticatedUser,
@@ -111,7 +134,11 @@ export class VisitsController {
   }
 
   @Post(':id/arrival')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.PETUGAS_DERMAGA)
+  @Roles(
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+  )
   recordArrival(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RecordArrivalDto,
@@ -122,7 +149,11 @@ export class VisitsController {
   }
 
   @Post(':id/berthings/start')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.PETUGAS_DERMAGA)
+  @Roles(
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+  )
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('evidenceFile'))
   startBerthing(
@@ -136,7 +167,7 @@ export class VisitsController {
   }
 
   @Post(':id/berthings/:berthingId/approve-override')
-  @Roles(UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN)
   approveBerthingOverride(
     @Param('id', ParseIntPipe) id: number,
     @Param('berthingId', ParseIntPipe) berthingId: number,
@@ -148,7 +179,11 @@ export class VisitsController {
   }
 
   @Post(':id/berthings/:berthingId/end')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.PETUGAS_DERMAGA)
+  @Roles(
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+  )
   endBerthing(
     @Param('id', ParseIntPipe) id: number,
     @Param('berthingId', ParseIntPipe) berthingId: number,
@@ -160,7 +195,11 @@ export class VisitsController {
   }
 
   @Post(':id/depart')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.PETUGAS_DERMAGA)
+  @Roles(
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+  )
   recordDeparture(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RecordDepartureDto,
@@ -170,4 +209,3 @@ export class VisitsController {
     return this.visitsService.recordDeparture(id, dto, user, req.portScope);
   }
 }
-

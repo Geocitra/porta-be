@@ -5,14 +5,22 @@ import {
   BerthServiceCategory,
   BerthType,
   BillingEligibility,
+  FacilityConditionStatus,
   PortCategory,
+  ShipType,
+  TerminalClass,
+  TerminalType,
+  VesselCategory,
+  ZoneType,
 } from '@prisma/client';
 import {
+  IsArray,
   IsBoolean,
   IsEnum,
   IsInt,
   IsNotEmpty,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   MaxLength,
@@ -41,12 +49,112 @@ export class CreatePortDto {
   @IsOptional()
   @IsEnum(PortCategory)
   portCategory?: PortCategory;
+
+  @ApiPropertyOptional({ example: 'PENGUMPUL' })
+  @IsOptional()
+  @IsString()
+  portClassification?: string;
+}
+
+export class UpdatePortDto {
+  @ApiPropertyOptional({ example: 'Pelabuhan Poumako' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(150)
+  name?: string;
+
+  @ApiPropertyOptional({ example: 'Kabupaten Mimika, Papua Tengah' })
+  @IsOptional()
+  @IsString()
+  location?: string;
+
+  @ApiPropertyOptional({ enum: PortCategory })
+  @IsOptional()
+  @IsEnum(PortCategory)
+  portCategory?: PortCategory;
+
+  @ApiPropertyOptional({ example: 'PENGUMPUL' })
+  @IsOptional()
+  @IsString()
+  portClassification?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+export class CreateTerminalDto {
+  @ApiProperty({ example: 1 })
+  @IsInt()
+  portId!: number;
+
+  @ApiProperty({ example: 'TRM-BRG-01' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(30)
+  code!: string;
+
+  @ApiProperty({ example: 'Terminal Barang & Kontainer Poumako' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(150)
+  name!: string;
+
+  @ApiPropertyOptional({ enum: TerminalType, default: TerminalType.MULTIPURPOSE })
+  @IsOptional()
+  @IsEnum(TerminalType)
+  terminalType?: TerminalType;
+
+  @ApiPropertyOptional({ enum: TerminalClass, default: TerminalClass.KELAS_B })
+  @IsOptional()
+  @IsEnum(TerminalClass)
+  terminalClass?: TerminalClass;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  description?: string;
+}
+
+export class UpdateTerminalDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  name?: string;
+
+  @ApiPropertyOptional({ enum: TerminalType })
+  @IsOptional()
+  @IsEnum(TerminalType)
+  terminalType?: TerminalType;
+
+  @ApiPropertyOptional({ enum: TerminalClass })
+  @IsOptional()
+  @IsEnum(TerminalClass)
+  terminalClass?: TerminalClass;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }
 
 export class CreateBerthDto {
   @ApiProperty({ example: 1 })
   @IsInt()
   portId!: number;
+
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional()
+  @IsInt()
+  terminalId?: number;
 
   @ApiProperty({ example: 'DRM-BETON-01' })
   @IsString()
@@ -113,33 +221,37 @@ export class CreateBerthDto {
   @IsNumber()
   @Min(0.5)
   maxDraftMeters?: number;
-}
 
-export class UpdatePortDto {
-  @ApiPropertyOptional({ example: 'Pelabuhan Poumako' })
+  @ApiPropertyOptional({ example: 5000 })
   @IsOptional()
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(150)
-  name?: string;
+  @IsNumber()
+  @Min(1)
+  maxGrossTonnage?: number;
 
-  @ApiPropertyOptional({ example: 'Kabupaten Mimika, Papua Tengah' })
+  @ApiPropertyOptional({ enum: VesselCategory, isArray: true })
   @IsOptional()
-  @IsString()
-  location?: string;
+  @IsArray()
+  @IsEnum(VesselCategory, { each: true })
+  allowedVesselCategories?: VesselCategory[];
 
-  @ApiPropertyOptional({ enum: PortCategory })
+  @ApiPropertyOptional({ enum: ShipType, isArray: true })
   @IsOptional()
-  @IsEnum(PortCategory)
-  portCategory?: PortCategory;
+  @IsArray()
+  @IsEnum(ShipType, { each: true })
+  allowedShipTypes?: ShipType[];
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsBoolean()
-  isActive?: boolean;
+  @IsObject()
+  technicalSpecs?: Record<string, unknown>;
 }
 
 export class UpdateBerthDto {
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional()
+  @IsInt()
+  terminalId?: number | null;
+
   @ApiPropertyOptional({ example: 'Dermaga Beton Utama Pemda' })
   @IsOptional()
   @IsString()
@@ -169,9 +281,139 @@ export class UpdateBerthDto {
   @Min(0.5)
   maxDraftMeters?: number;
 
+  @ApiPropertyOptional({ example: 5000 })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  maxGrossTonnage?: number;
+
+  @ApiPropertyOptional({ enum: VesselCategory, isArray: true })
+  @IsOptional()
+  @IsArray()
+  @IsEnum(VesselCategory, { each: true })
+  allowedVesselCategories?: VesselCategory[];
+
+  @ApiPropertyOptional({ enum: ShipType, isArray: true })
+  @IsOptional()
+  @IsArray()
+  @IsEnum(ShipType, { each: true })
+  allowedShipTypes?: ShipType[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  technicalSpecs?: Record<string, unknown>;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
 }
 
+export class CreatePortZoneDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  terminalId?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  berthId?: number;
+
+  @ApiProperty({ example: 'ZN-CY-01' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(30)
+  code!: string;
+
+  @ApiProperty({ example: 'Container Yard Blok A' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(150)
+  name!: string;
+
+  @ApiPropertyOptional({ enum: ZoneType, default: ZoneType.LAPANGAN_PENUMPUKAN })
+  @IsOptional()
+  @IsEnum(ZoneType)
+  zoneType?: ZoneType;
+
+  @ApiPropertyOptional({ example: 2500 })
+  @IsOptional()
+  @IsNumber()
+  areaSqm?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  description?: string;
+}
+
+export class CreatePortFacilityDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  terminalId?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  berthId?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  zoneId?: number;
+
+  @ApiProperty({ example: 'FAC-FND-01' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(40)
+  code!: string;
+
+  @ApiProperty({ example: 'Rubber Fender Dermaga Nusantara Unit 1-8' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(150)
+  name!: string;
+
+  @ApiProperty({ example: 'FENDER_BOLLARD' })
+  @IsString()
+  @IsNotEmpty()
+  facilityType!: string;
+
+  @ApiPropertyOptional({ enum: FacilityConditionStatus, default: FacilityConditionStatus.GOOD })
+  @IsOptional()
+  @IsEnum(FacilityConditionStatus)
+  conditionStatus?: FacilityConditionStatus;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  specifications?: Record<string, unknown>;
+}
+
+export class CreateDivisionDto {
+  @ApiProperty({ example: 'BID-LAUT' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(30)
+  code!: string;
+
+  @ApiProperty({ example: 'Bidang Perhubungan Laut & Kepelabuhanan' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(150)
+  name!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiPropertyOptional({ type: [Number], example: [1, 2] })
+  @IsOptional()
+  @IsArray()
+  @IsInt({ each: true })
+  portIds?: number[];
+}

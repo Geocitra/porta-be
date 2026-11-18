@@ -7,7 +7,10 @@ import {
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
-import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import {
+  AuthenticatedUser,
+  isPetugasRole,
+} from '../../common/decorators/current-user.decorator';
 import { ScopeFilter } from '../../common/guards/port-scope.guard';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditLogService } from '../../common/utils/audit-log.service';
@@ -25,15 +28,33 @@ const USER_PUBLIC_SELECT = {
   fullName: true,
   role: true,
   portId: true,
+  divisionId: true,
   operatorId: true,
   tenantId: true,
   isActive: true,
   mustChangePassword: true,
   passwordChangedAt: true,
   createdAt: true,
+  port: { select: { id: true, code: true, name: true } },
+  division: { select: { id: true, code: true, name: true } },
+  assignments: {
+    where: { status: 'ACTIVE' as const },
+    select: {
+      id: true,
+      assignmentCode: true,
+      portId: true,
+      terminalId: true,
+      berthId: true,
+      taskTypes: true,
+      permissionCodes: true,
+      status: true,
+    },
+  },
 } as const;
 
 const PORT_BOUND_ROLES: UserRole[] = [
+  UserRole.KEPALA_PELABUHAN,
+  UserRole.PETUGAS_PELABUHAN,
   UserRole.PETUGAS_DERMAGA,
   UserRole.BENDAHARA,
 ];
@@ -49,6 +70,9 @@ export class UsersService {
     return this.prisma.user.findMany({
       where: {
         ...(scope.portId ? { portId: scope.portId } : {}),
+        ...(scope.allowedPortIds && !scope.portId
+          ? { portId: { in: scope.allowedPortIds } }
+          : {}),
       },
       select: USER_PUBLIC_SELECT,
       orderBy: { id: 'asc' },
@@ -66,11 +90,11 @@ export class UsersService {
     }
     if (
       actor.role === UserRole.ADMIN_PELABUHAN &&
-      target.role !== UserRole.PETUGAS_DERMAGA &&
+      !isPetugasRole(target.role) &&
       target.role !== UserRole.BENDAHARA
     ) {
       throw new ForbiddenException(
-        'ADMIN_PELABUHAN hanya dapat mengelola akun PETUGAS_DERMAGA atau BENDAHARA.',
+        'ADMIN_PELABUHAN hanya dapat mengelola akun PETUGAS_PELABUHAN / PETUGAS_DERMAGA atau BENDAHARA.',
       );
     }
     if (scope.portId && target.portId !== scope.portId) {
@@ -81,6 +105,7 @@ export class UsersService {
   private async validateRoleAndRelations(params: {
     role: UserRole;
     portId: number | null;
+    divisionId: number | null;
     operatorId: number | null;
     tenantId: number | null;
   }) {
@@ -91,6 +116,15 @@ export class UsersService {
       const port = await this.prisma.port.findUnique({ where: { id: params.portId } });
       if (!port || !port.isActive) {
         throw new NotFoundException(`Pelabuhan #${params.portId} tidak ditemukan atau tidak aktif.`);
+      }
+    }
+    if (params.role === UserRole.KEPALA_BIDANG) {
+      if (!params.divisionId) {
+        throw new BadRequestException('Peran KEPALA_BIDANG wajib terhubung ke divisionId.');
+      }
+      const div = await this.prisma.division.findUnique({ where: { id: params.divisionId } });
+      if (!div || !div.isActive) {
+        throw new NotFoundException(`Bidang #${params.divisionId} tidak ditemukan atau nonaktif.`);
       }
     }
     if (params.role === UserRole.OPERATOR_KAPAL) {
@@ -115,9 +149,9 @@ export class UsersService {
 
   async createUser(dto: CreateUserDto, actor: AuthenticatedUser) {
     if (actor.role === UserRole.ADMIN_PELABUHAN) {
-      if (dto.role !== UserRole.PETUGAS_DERMAGA && dto.role !== UserRole.BENDAHARA) {
+      if (!isPetugasRole(dto.role) && dto.role !== UserRole.BENDAHARA) {
         throw new ForbiddenException(
-          'ADMIN_PELABUHAN hanya dapat membuat akun PETUGAS_DERMAGA atau BENDAHARA.',
+          'ADMIN_PELABUHAN hanya dapat membuat akun PETUGAS_PELABUHAN / PETUGAS_DERMAGA atau BENDAHARA.',
         );
       }
       if (actor.portId && dto.portId && dto.portId !== actor.portId) {
@@ -140,12 +174,14 @@ export class UsersService {
       actor.role === UserRole.ADMIN_PELABUHAN && actor.portId
         ? actor.portId
         : (dto.portId ?? null);
+    const divisionId = dto.divisionId ?? null;
     const operatorId = dto.operatorId ?? null;
     const tenantId = dto.tenantId ?? null;
 
     await this.validateRoleAndRelations({
       role: dto.role,
       portId,
+      divisionId,
       operatorId,
       tenantId,
     });
@@ -161,6 +197,7 @@ export class UsersService {
           fullName: dto.fullName.trim(),
           role: dto.role,
           portId,
+          divisionId,
           operatorId,
           tenantId,
           mustChangePassword: dto.mustChangePassword ?? true,
@@ -170,6 +207,8 @@ export class UsersService {
 
       await this.auditLog.record({
         actorId: actor.id,
+        actorRole: actor.role,
+        portId: created.portId,
         action: 'USER_CREATED',
         entityName: 'users',
         entityId: created.id,
@@ -195,11 +234,11 @@ export class UsersService {
     if (
       actor.role === UserRole.ADMIN_PELABUHAN &&
       dto.role &&
-      dto.role !== UserRole.PETUGAS_DERMAGA &&
+      !isPetugasRole(dto.role) &&
       dto.role !== UserRole.BENDAHARA
     ) {
       throw new ForbiddenException(
-        'ADMIN_PELABUHAN hanya dapat menetapkan peran PETUGAS_DERMAGA atau BENDAHARA.',
+        'ADMIN_PELABUHAN hanya dapat menetapkan peran PETUGAS_PELABUHAN / PETUGAS_DERMAGA atau BENDAHARA.',
       );
     }
 
@@ -223,15 +262,18 @@ export class UsersService {
 
     const nextRole = dto.role ?? target.role;
     const nextPortId =
-      actor.role === UserRole.ADMIN_PELABUHAN
+      actor.role === UserRole.ADMIN_PELABUHAN && actor.portId
         ? actor.portId
         : dto.portId !== undefined
           ? dto.portId
           : target.portId;
+    const nextDivisionId =
+      dto.divisionId !== undefined ? dto.divisionId : target.divisionId;
 
     await this.validateRoleAndRelations({
       role: nextRole,
       portId: nextPortId,
+      divisionId: nextDivisionId,
       operatorId: target.operatorId,
       tenantId: target.tenantId,
     });
@@ -245,6 +287,7 @@ export class UsersService {
           ...(nextUsername !== undefined ? { username: nextUsername } : {}),
           ...(dto.role ? { role: dto.role } : {}),
           ...(dto.portId !== undefined ? { portId: nextPortId } : {}),
+          ...(dto.divisionId !== undefined ? { divisionId: nextDivisionId } : {}),
           ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
         },
         select: USER_PUBLIC_SELECT,
@@ -252,6 +295,8 @@ export class UsersService {
 
       await this.auditLog.record({
         actorId: actor.id,
+        actorRole: actor.role,
+        portId: updated.portId,
         action: 'USER_UPDATED',
         entityName: 'users',
         entityId: userId,
@@ -261,6 +306,7 @@ export class UsersService {
           fullName: target.fullName,
           role: target.role,
           portId: target.portId,
+          divisionId: target.divisionId,
           isActive: target.isActive,
         },
         afterData: updated,
@@ -291,6 +337,8 @@ export class UsersService {
 
       await this.auditLog.record({
         actorId: actor.id,
+        actorRole: actor.role,
+        portId: target.portId,
         action: 'USER_STATUS_UPDATED',
         entityName: 'users',
         entityId: userId,
@@ -329,6 +377,8 @@ export class UsersService {
 
       await this.auditLog.record({
         actorId: actor.id,
+        actorRole: actor.role,
+        portId: target.portId,
         action: 'USER_PASSWORD_RESET',
         entityName: 'users',
         entityId: userId,

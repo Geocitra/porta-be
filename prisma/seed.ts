@@ -18,6 +18,7 @@ import { seedVessels } from './seeds/05-vessels';
 import { seedOperationsVisits } from './seeds/06-operations-visits';
 import { seedCargoEquipmentUtilities } from './seeds/07-cargo-equipment-utilities';
 import { seedAdjustmentsReportsComplaints } from './seeds/08-adjustments-reports-complaints';
+import { seedHierarchyAssignmentsAndTasks } from './seeds/09-hierarchy-assignments-tasks';
 
 const prisma = new PrismaClient();
 
@@ -191,9 +192,16 @@ async function main() {
     });
   }
 
+  // Step 10: Organizational Hierarchy, Ecosystem Master, Assignments & Task Workflow
+  await seedHierarchyAssignmentsAndTasks(prisma, {
+    pomakoId: pomako.id,
+    pomakoBarangId: pomakoBarang.id,
+    pomakoPenumpangId: pomakoPenumpang.id,
+  });
+
   console.log('================================================================');
   console.log('  PORTA Database Seeder Finished Successfully!');
-  console.log('  All 16 Modules Populated with Deep, Authentic, Real-World Data.');
+  console.log('  All Modules Populated with Deep, Authentic, Real-World Data.');
   console.log('================================================================');
 }
 

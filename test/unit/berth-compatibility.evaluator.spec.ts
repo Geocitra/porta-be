@@ -110,4 +110,21 @@ describe('Berth Compatibility Hybrid Validator', () => {
     });
     expect(tooDeep.validationResult).toBe(BerthValidationResult.BLOCK);
   });
+
+  it('returns BLOCK when vessel grossTonnage exceeds berthMaxGrossTonnage, and WARNING when multipurpose berth restricts allowedVesselCategories', () => {
+    const tooHeavy = evaluateBerthCompatibility({
+      ...baseInput,
+      berthMaxGrossTonnage: 3000,
+      vesselGrossTonnage: 4500,
+    });
+    expect(tooHeavy.validationResult).toBe(BerthValidationResult.BLOCK);
+
+    const restrictedMultipurpose = evaluateBerthCompatibility({
+      ...baseInput,
+      berthServiceCategory: BerthServiceCategory.DERMAGA_CAMPURAN,
+      allowedVesselCategories: [VesselCategory.PENUMPANG],
+      vesselCategory: VesselCategory.BARANG,
+    });
+    expect(restrictedMultipurpose.validationResult).toBe(BerthValidationResult.WARNING);
+  });
 });

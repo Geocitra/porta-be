@@ -41,8 +41,26 @@ import {
 import { evaluateBerthCompatibility } from './berth-compatibility.evaluator';
 import { assertValidVisitTransition } from './visit-state-machine';
 
+export const VISIT_CREATED_EVENT = 'visit.created';
+export const VISIT_APPROVED_EVENT = 'visit.approved';
+export const VISIT_ANCHORED_EVENT = 'visit.anchored';
+export const BERTHING_STARTED_EVENT = 'berthing.started';
 export const VISIT_DEPARTED_EVENT = 'visit.departed';
 export const BERTHING_OVERRIDE_REQUESTED_EVENT = 'berthing.override_requested';
+
+export interface VisitLifecycleEvent {
+  visitId: number;
+  visitNumber: string;
+  portId: number;
+  vesselId: number;
+  vesselName: string;
+  vesselCategory: VesselCategory;
+  eta: Date;
+  etd: Date;
+  berthId?: number | null;
+  terminalId?: number | null;
+  actorId: number;
+}
 
 export interface VisitDepartedEvent {
   visitId: number;
@@ -152,11 +170,17 @@ export class VisitsService {
         berth.maxLengthMeters != null ? DecimalUtil.toNumber(berth.maxLengthMeters) : null,
       berthMaxDraftMeters:
         berth.maxDraftMeters != null ? DecimalUtil.toNumber(berth.maxDraftMeters) : null,
+      berthMaxGrossTonnage:
+        berth.maxGrossTonnage != null ? DecimalUtil.toNumber(berth.maxGrossTonnage) : null,
+      allowedVesselCategories: berth.allowedVesselCategories,
+      allowedShipTypes: berth.allowedShipTypes,
       vesselCategory: visit.vessel.vesselCategory,
+      vesselShipType: visit.vessel.shipType,
       vesselLengthMeters:
         visit.vessel.lengthMeters != null ? DecimalUtil.toNumber(visit.vessel.lengthMeters) : null,
       vesselDraftMeters:
         visit.vessel.draftMeters != null ? DecimalUtil.toNumber(visit.vessel.draftMeters) : null,
+      vesselGrossTonnage: DecimalUtil.toNumber(visit.vessel.grossTonnage),
     });
 
     return {
@@ -251,6 +275,8 @@ export class VisitsService {
 
       await this.auditLog.record({
         actorId: user.id,
+        actorRole: user.role,
+        portId: visit.portId,
         action: 'VISIT_CREATED',
         entityName: 'ship_visits',
         entityId: visit.id,
@@ -261,6 +287,18 @@ export class VisitsService {
       return visit;
     });
 
+    this.eventEmitter.emit(VISIT_CREATED_EVENT, {
+      visitId: created.id,
+      visitNumber: created.visitNumber,
+      portId: created.portId,
+      vesselId: vessel.id,
+      vesselName: vessel.name,
+      vesselCategory: vessel.vesselCategory,
+      eta: created.eta,
+      etd: created.etd,
+      actorId: user.id,
+    } satisfies VisitLifecycleEvent);
+
     return created;
   }
 
@@ -268,7 +306,7 @@ export class VisitsService {
     const visit = await this.findById(visitId, scope);
     assertValidVisitTransition(visit.status, VisitStatus.APPROVED);
 
-    return this.prisma.$transaction(async (tx) => {
+    const approved = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.shipVisit.updateMany({
         where: { id: visitId, status: VisitStatus.REQUESTED },
         data: { status: VisitStatus.APPROVED },
@@ -279,6 +317,8 @@ export class VisitsService {
 
       await this.auditLog.record({
         actorId: user.id,
+        actorRole: user.role,
+        portId: visit.portId,
         action: 'VISIT_APPROVED',
         entityName: 'ship_visits',
         entityId: visitId,
@@ -289,6 +329,20 @@ export class VisitsService {
 
       return tx.shipVisit.findUnique({ where: { id: visitId } });
     });
+
+    this.eventEmitter.emit(VISIT_APPROVED_EVENT, {
+      visitId: visit.id,
+      visitNumber: visit.visitNumber,
+      portId: visit.portId,
+      vesselId: visit.vesselId,
+      vesselName: visit.vessel.name,
+      vesselCategory: visit.vessel.vesselCategory,
+      eta: visit.eta,
+      etd: visit.etd,
+      actorId: user.id,
+    } satisfies VisitLifecycleEvent);
+
+    return approved;
   }
 
   async recordArrival(
@@ -303,7 +357,7 @@ export class VisitsService {
 
     const ata = new Date(dto.ataAnchorage);
 
-    return this.prisma.$transaction(async (tx) => {
+    const anchored = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.shipVisit.updateMany({
         where: { id: visitId, status: VisitStatus.APPROVED },
         data: { status: VisitStatus.ANCHORED, ataAnchorage: ata },
@@ -314,6 +368,8 @@ export class VisitsService {
 
       await this.auditLog.record({
         actorId: user.id,
+        actorRole: user.role,
+        portId: visit.portId,
         action: 'VISIT_ANCHORED',
         entityName: 'ship_visits',
         entityId: visitId,
@@ -323,6 +379,20 @@ export class VisitsService {
 
       return tx.shipVisit.findUnique({ where: { id: visitId } });
     });
+
+    this.eventEmitter.emit(VISIT_ANCHORED_EVENT, {
+      visitId: visit.id,
+      visitNumber: visit.visitNumber,
+      portId: visit.portId,
+      vesselId: visit.vesselId,
+      vesselName: visit.vessel.name,
+      vesselCategory: visit.vessel.vesselCategory,
+      eta: visit.eta,
+      etd: visit.etd,
+      actorId: user.id,
+    } satisfies VisitLifecycleEvent);
+
+    return anchored;
   }
 
   async startBerthing(
@@ -378,9 +448,14 @@ export class VisitsService {
       berthServiceCategory: berth.berthServiceCategory,
       berthMaxLengthMeters: berth.maxLengthMeters != null ? DecimalUtil.toNumber(berth.maxLengthMeters) : null,
       berthMaxDraftMeters: berth.maxDraftMeters != null ? DecimalUtil.toNumber(berth.maxDraftMeters) : null,
+      berthMaxGrossTonnage: berth.maxGrossTonnage != null ? DecimalUtil.toNumber(berth.maxGrossTonnage) : null,
+      allowedVesselCategories: berth.allowedVesselCategories,
+      allowedShipTypes: berth.allowedShipTypes,
       vesselCategory: visit.vessel.vesselCategory,
+      vesselShipType: visit.vessel.shipType,
       vesselLengthMeters: visit.vessel.lengthMeters != null ? DecimalUtil.toNumber(visit.vessel.lengthMeters) : null,
       vesselDraftMeters: visit.vessel.draftMeters != null ? DecimalUtil.toNumber(visit.vessel.draftMeters) : null,
+      vesselGrossTonnage: DecimalUtil.toNumber(visit.vessel.grossTonnage),
     });
 
     if (evaluation.validationResult === BerthValidationResult.BLOCK) {
@@ -477,6 +552,20 @@ export class VisitsService {
         overrideReason: dto.overrideReason!.trim(),
       } satisfies BerthingOverrideRequestedEvent);
     }
+
+    this.eventEmitter.emit(BERTHING_STARTED_EVENT, {
+      visitId: visit.id,
+      visitNumber: visit.visitNumber,
+      portId: visit.portId,
+      vesselId: visit.vesselId,
+      vesselName: visit.vessel.name,
+      vesselCategory: visit.vessel.vesselCategory,
+      eta: visit.eta,
+      etd: visit.etd,
+      berthId: berth.id,
+      terminalId: berth.terminalId,
+      actorId: user.id,
+    } satisfies VisitLifecycleEvent);
 
     return result;
   }

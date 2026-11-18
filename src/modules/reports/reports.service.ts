@@ -204,13 +204,27 @@ export class ReportsService {
     };
   }
 
-  async getAuditLogs() {
+  async getAuditLogs(filters?: {
+    portId?: number;
+    entityName?: string;
+    action?: string;
+    actorId?: number;
+  }) {
     return this.prisma.auditLog.findMany({
-      take: 100,
+      where: {
+        ...(filters?.portId ? { portId: filters.portId } : {}),
+        ...(filters?.entityName ? { entityName: filters.entityName } : {}),
+        ...(filters?.action ? { action: filters.action } : {}),
+        ...(filters?.actorId ? { actorId: filters.actorId } : {}),
+      },
+      take: 150,
       orderBy: { createdAt: 'desc' },
       include: {
         actor: {
           select: { id: true, email: true, fullName: true, role: true },
+        },
+        port: {
+          select: { id: true, code: true, name: true },
         },
       },
     });

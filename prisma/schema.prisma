@@ -13,7 +13,11 @@ datasource db {
 
 enum UserRole {
   SUPERADMIN
+  KEPALA_DINAS
+  KEPALA_BIDANG
+  KEPALA_PELABUHAN
   ADMIN_PELABUHAN
+  PETUGAS_PELABUHAN
   PETUGAS_DERMAGA
   BENDAHARA
   OPERATOR_KAPAL
@@ -320,22 +324,145 @@ enum AdjustmentApprovalStatus {
   REJECTED
 }
 
+enum TerminalType {
+  BARANG
+  PENUMPANG
+  MULTIPURPOSE
+  RORO_FERRY
+  PELRA
+  KHUSUS_TUKS
+}
+
+enum ZoneType {
+  LAPANGAN_PENUMPUKAN
+  GUDANG_KAWASAN
+  RUANG_TUNGGU
+  AREA_PARKIR
+  AREA_DERMAGA
+  PERAIRAN_KOLAM
+  LAINNYA
+}
+
+enum FacilityConditionStatus {
+  GOOD
+  MINOR_DAMAGE
+  MAJOR_DAMAGE
+  UNDER_MAINTENANCE
+  INACTIVE
+}
+
+enum AssignmentStatus {
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  REVOKED
+}
+
+enum TaskType {
+  VESSEL_ARRIVAL_CHECK
+  BERTHING_INSPECTION
+  MANIFEST_CHECK
+  PASSENGER_SERVICE
+  CARGO_HANDLING_CHECK
+  VESSEL_DEPARTURE_CLEARANCE
+  DOCUMENT_VERIFICATION
+  COMPANY_REGISTRATION_CHECK
+  RETRIBUTION_COLLECTION
+  ASSET_MANAGEMENT_CHECK
+  FACILITY_INSPECTION
+  MAINTENANCE_HANDLING
+  SAFETY_INSPECTION
+  GENERAL_OPERATION
+}
+
+enum TaskSourceType {
+  SHIP_VISIT
+  BERTHING_RECORD
+  MANIFEST
+  CARGO_RECORD
+  DOCUMENT_SUBMISSION
+  COMPANY_ONBOARDING
+  BILLING_INVOICE
+  GATE_HANDOVER
+  ASSET_LEASE
+  MAINTENANCE_TICKET
+  SOP_SCHEDULE
+  MANUAL_ASSIGNMENT
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum TaskExecutionStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  SUBMITTED
+  COMPLETED
+  OVERDUE
+  CANCELLED
+}
+
+enum TaskReviewStatus {
+  NOT_SUBMITTED
+  WAITING_ADMIN
+  ADMIN_REVIEW
+  ADMIN_RETURNED
+  ADMIN_APPROVED
+  WAITING_HEAD_VERIFICATION
+  HEAD_VERIFIED
+  HEAD_RETURNED
+  HEAD_REJECTED
+}
+
+enum TaskReviewStage {
+  ADMIN_CHECK
+  HEAD_VERIFICATION
+}
+
+enum DailyReportReviewStatus {
+  WAITING_ADMIN
+  ADMIN_RETURNED
+  WAITING_HEAD_VERIFICATION
+  HEAD_VERIFIED
+  HEAD_RETURNED
+}
+
+enum NotificationPriority {
+  INFORMATIONAL
+  WARNING
+  URGENT
+  CRITICAL
+}
+
 // ============================================================================
 // MASTER DATA, ONBOARDING & ACCESS CONTROL
 // ============================================================================
 
 model Port {
-  id           Int          @id @default(autoincrement())
-  code         String       @unique @db.VarChar(20)
-  name         String       @db.VarChar(150)
-  location     String?      @db.VarChar(200)
-  portCategory PortCategory @default(CAMPURAN) @map("port_category")
-  isActive     Boolean      @default(true) @map("is_active")
-  createdAt    DateTime     @default(now()) @map("created_at")
-  updatedAt    DateTime     @updatedAt @map("updated_at")
+  id                 Int          @id @default(autoincrement())
+  code               String       @unique @db.VarChar(20)
+  name               String       @db.VarChar(150)
+  location           String?      @db.VarChar(200)
+  portCategory       PortCategory @default(CAMPURAN) @map("port_category")
+  portClassification String       @default("PENGUMPUL") @map("port_classification") @db.VarChar(60)
+  isActive           Boolean      @default(true) @map("is_active")
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
 
   users            User[]
   berths           Berth[]
+  terminals        Terminal[]
+  zones            PortZone[]
+  facilities       PortFacility[]
+  divisionPorts    DivisionPort[]
+  assignments      UserAssignment[]
+  tasks            Task[]
+  auditLogs        AuditLog[]
+  notifications    Notification[]
   visits           ShipVisit[]
   dailyPortReports DailyPortReport[]
   warnings         Warning[]
@@ -364,6 +491,7 @@ model User {
   fullName           String    @map("full_name") @db.VarChar(150)
   role               UserRole
   portId             Int?      @map("port_id")
+  divisionId         Int?      @map("division_id")
   operatorId         Int?      @map("operator_id")
   tenantId           Int?      @map("tenant_id")
   isActive           Boolean   @default(true) @map("is_active")
@@ -373,6 +501,7 @@ model User {
   updatedAt          DateTime  @updatedAt @map("updated_at")
 
   port     Port?         @relation(fields: [portId], references: [id], onDelete: Restrict)
+  division Division?     @relation("DivisionUsers", fields: [divisionId], references: [id], onDelete: Restrict)
   operator ShipOperator? @relation("OperatorUsers", fields: [operatorId], references: [id], onDelete: Restrict)
   tenant   Tenant?       @relation("TenantUsers", fields: [tenantId], references: [id], onDelete: Restrict)
 
@@ -385,8 +514,11 @@ model User {
   verifiedPayments  Payment[]         @relation("VerifiedBy")
   auditLogs         AuditLog[]        @relation("Actor")
   dailyPortReports   DailyPortReport[]   @relation("ReportOfficer")
+  adminCheckedReports DailyPortReport[]  @relation("ReportAdminChecker")
+  headVerifiedReports DailyPortReport[]  @relation("ReportHeadVerifier")
   issuedWarnings     Warning[]           @relation("WarningIssuer")
   notifications      Notification[]
+  notificationPreferences NotificationPreference[]
   createdLeases      AssetLease[]        @relation("LeaseCreator")
   verifiedLeasePays  AssetLeasePayment[]   @relation("LeasePaymentVerifier")
   reportedMaint      MaintenanceTicket[]   @relation("MaintenanceReporter")
@@ -398,38 +530,60 @@ model User {
   approvedAdjusts            BillingAdjustment[]         @relation("AdjustmentApprover")
   updatedConfigs             SystemConfig[]              @relation("ConfigUpdater")
   gatewayTransactions        PaymentGatewayTransaction[] @relation("GatewayTxCreator")
+  assignments                UserAssignment[]            @relation("AssignedUser")
+  grantedAssignments         UserAssignment[]            @relation("AssignmentGranter")
+  assignedTasks              Task[]                      @relation("TaskAssignee")
+  createdTasks               Task[]                      @relation("TaskCreator")
+  adminReviewedTasks         Task[]                      @relation("TaskAdminReviewer")
+  headVerifiedTasks          Task[]                      @relation("TaskHeadVerifier")
+  taskSubmissions            TaskSubmission[]            @relation("TaskSubmitter")
+  taskReviews                TaskReview[]                @relation("TaskReviewer")
+  taskAttachments            TaskAttachment[]            @relation("TaskAttachmentUploader")
+  taskHistories              TaskHistory[]               @relation("TaskHistoryActor")
 
   @@index([portId])
+  @@index([divisionId])
   @@index([operatorId])
   @@index([tenantId])
   @@map("users")
 }
 
 model Berth {
-  id                   Int                    @id @default(autoincrement())
-  portId               Int                    @map("port_id")
-  code                 String                 @db.VarChar(30)
-  name                 String                 @db.VarChar(150)
-  berthType            BerthType              @map("berth_type")
-  berthServiceCategory BerthServiceCategory   @default(DERMAGA_CAMPURAN) @map("berth_service_category")
-  operationalStatus    BerthOperationalStatus @default(OPEN) @map("operational_status")
-  authorityType        AuthorityType          @map("authority_type")
-  billingEligibility   BillingEligibility     @default(PENDING_VERIFICATION) @map("billing_eligibility")
-  legalBasis           String?                @map("legal_basis") @db.VarChar(255)
-  managementEvidence   String?                @map("management_evidence") @db.VarChar(255)
-  maxLengthMeters      Decimal?               @map("max_length_meters") @db.Decimal(8, 2)
-  maxDraftMeters       Decimal?               @map("max_draft_meters") @db.Decimal(6, 2)
-  isActive             Boolean                @default(true) @map("is_active")
-  createdAt            DateTime               @default(now()) @map("created_at")
-  updatedAt            DateTime               @updatedAt @map("updated_at")
+  id                      Int                    @id @default(autoincrement())
+  portId                  Int                    @map("port_id")
+  terminalId              Int?                   @map("terminal_id")
+  code                    String                 @db.VarChar(30)
+  name                    String                 @db.VarChar(150)
+  berthType               BerthType              @map("berth_type")
+  berthServiceCategory    BerthServiceCategory   @default(DERMAGA_CAMPURAN) @map("berth_service_category")
+  operationalStatus       BerthOperationalStatus @default(OPEN) @map("operational_status")
+  authorityType           AuthorityType          @map("authority_type")
+  billingEligibility      BillingEligibility     @default(PENDING_VERIFICATION) @map("billing_eligibility")
+  legalBasis              String?                @map("legal_basis") @db.VarChar(255)
+  managementEvidence      String?                @map("management_evidence") @db.VarChar(255)
+  maxLengthMeters         Decimal?               @map("max_length_meters") @db.Decimal(8, 2)
+  maxDraftMeters          Decimal?               @map("max_draft_meters") @db.Decimal(6, 2)
+  maxGrossTonnage         Decimal?               @map("max_gross_tonnage") @db.Decimal(12, 2)
+  allowedVesselCategories VesselCategory[]       @default([]) @map("allowed_vessel_categories")
+  allowedShipTypes        ShipType[]             @default([]) @map("allowed_ship_types")
+  technicalSpecs          Json?                  @map("technical_specs")
+  isActive                Boolean                @default(true) @map("is_active")
+  createdAt               DateTime               @default(now()) @map("created_at")
+  updatedAt               DateTime               @updatedAt @map("updated_at")
 
   port               Port                  @relation(fields: [portId], references: [id], onDelete: Restrict)
+  terminal           Terminal?             @relation(fields: [terminalId], references: [id], onDelete: Restrict)
+  zones              PortZone[]
+  facilities         PortFacility[]
+  assignments        UserAssignment[]
+  tasks              Task[]
   berthingRecords    BerthingRecord[]
   dailyReportItems   DailyPortReportItem[]
   maintenanceTickets MaintenanceTicket[]
 
   @@unique([portId, code])
   @@unique([portId, id])
+  @@index([terminalId])
   @@map("berths")
 }
 
@@ -603,6 +757,7 @@ model ShipVisit {
   equipmentRentals EquipmentRentalRecord[]
   utilityReadings  UtilityMeterReading[]
   manifests        VesselManifest[]
+  tasks            Task[]
 
   @@unique([portId, id])
   @@index([portId, status])
@@ -731,18 +886,24 @@ model Payment {
 model AuditLog {
   id         Int      @id @default(autoincrement())
   actorId    Int?     @map("actor_id")
+  actorRole  String?  @map("actor_role") @db.VarChar(60)
+  portId     Int?     @map("port_id")
   action     String   @db.VarChar(80)
   entityName String   @map("entity_name") @db.VarChar(80)
   entityId   String   @map("entity_id") @db.VarChar(80)
   beforeData Json?    @map("before_data")
   afterData  Json?    @map("after_data")
   reason     String?  @db.Text
+  ipAddress  String?  @map("ip_address") @db.VarChar(80)
+  userAgent  String?  @map("user_agent") @db.VarChar(255)
   createdAt  DateTime @default(now()) @map("created_at")
 
   actor User? @relation("Actor", fields: [actorId], references: [id], onDelete: Restrict)
+  port  Port? @relation(fields: [portId], references: [id], onDelete: Restrict)
 
   @@index([entityName, entityId])
   @@index([actorId])
+  @@index([portId, createdAt])
   @@map("audit_logs")
 }
 
@@ -751,21 +912,34 @@ model AuditLog {
 // ============================================================================
 
 model DailyPortReport {
-  id                  Int               @id @default(autoincrement())
-  portId              Int               @map("port_id")
-  reportDate          DateTime          @map("report_date") @db.Date
-  officerId           Int               @map("officer_id")
-  totalVesselsStaying Int               @default(0) @map("total_vessels_staying")
-  generalNotes        String?           @map("general_notes") @db.Text
-  status              DailyReportStatus @default(SUBMITTED)
-  createdAt           DateTime          @default(now()) @map("created_at")
-  updatedAt           DateTime          @updatedAt @map("updated_at")
+  id                  Int                     @id @default(autoincrement())
+  portId              Int                     @map("port_id")
+  terminalId          Int?                    @map("terminal_id")
+  reportDate          DateTime                @map("report_date") @db.Date
+  officerId           Int                     @map("officer_id")
+  totalVesselsStaying Int                     @default(0) @map("total_vessels_staying")
+  generalNotes        String?                 @map("general_notes") @db.Text
+  status              DailyReportStatus       @default(SUBMITTED)
+  reviewStatus        DailyReportReviewStatus @default(WAITING_ADMIN) @map("review_status")
+  checkedByAdminId    Int?                    @map("checked_by_admin_id")
+  checkedAt           DateTime?               @map("checked_at")
+  adminNotes          String?                 @map("admin_notes") @db.Text
+  verifiedByHeadId    Int?                    @map("verified_by_head_id")
+  verifiedAt          DateTime?               @map("verified_at")
+  headNotes           String?                 @map("head_notes") @db.Text
+  summarySnapshot     Json?                   @map("summary_snapshot")
+  createdAt           DateTime                @default(now()) @map("created_at")
+  updatedAt           DateTime                @updatedAt @map("updated_at")
 
-  port    Port                  @relation(fields: [portId], references: [id], onDelete: Restrict)
-  officer User                  @relation("ReportOfficer", fields: [officerId], references: [id], onDelete: Restrict)
-  items   DailyPortReportItem[]
+  port           Port                  @relation(fields: [portId], references: [id], onDelete: Restrict)
+  terminal       Terminal?             @relation(fields: [terminalId], references: [id], onDelete: Restrict)
+  officer        User                  @relation("ReportOfficer", fields: [officerId], references: [id], onDelete: Restrict)
+  checkedByAdmin User?                 @relation("ReportAdminChecker", fields: [checkedByAdminId], references: [id], onDelete: Restrict)
+  verifiedByHead User?                 @relation("ReportHeadVerifier", fields: [verifiedByHeadId], references: [id], onDelete: Restrict)
+  items          DailyPortReportItem[]
 
   @@index([portId, reportDate])
+  @@index([portId, reviewStatus])
   @@map("daily_port_reports")
 }
 
@@ -814,18 +988,27 @@ model Warning {
 }
 
 model Notification {
-  id        Int      @id @default(autoincrement())
-  userId    Int      @map("user_id")
-  title     String   @db.VarChar(200)
-  message   String   @db.Text
-  type      String   @db.VarChar(50)
-  isRead    Boolean  @default(false) @map("is_read")
-  linkUrl   String?  @map("link_url") @db.VarChar(255)
-  createdAt DateTime @default(now()) @map("created_at")
+  id           Int                  @id @default(autoincrement())
+  userId       Int                  @map("user_id")
+  portId       Int?                 @map("port_id")
+  title        String               @db.VarChar(200)
+  message      String               @db.Text
+  type         String               @db.VarChar(50)
+  category     String               @default("GENERAL") @db.VarChar(60)
+  priority     NotificationPriority @default(INFORMATIONAL)
+  resourceType String?              @map("resource_type") @db.VarChar(60)
+  resourceId   String?              @map("resource_id") @db.VarChar(60)
+  dedupKey     String?              @unique @map("dedup_key") @db.VarChar(150)
+  isRead       Boolean              @default(false) @map("is_read")
+  readAt       DateTime?            @map("read_at")
+  linkUrl      String?              @map("link_url") @db.VarChar(255)
+  createdAt    DateTime             @default(now()) @map("created_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  user User  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  port Port? @relation(fields: [portId], references: [id], onDelete: Restrict)
 
   @@index([userId, isRead])
+  @@index([portId, priority])
   @@map("notifications")
 }
 
@@ -1230,3 +1413,392 @@ model PaymentGatewayTransaction {
   @@index([portId, status])
   @@map("payment_gateway_transactions")
 }
+
+// ============================================================================
+// PHASE 3: ORGANIZATIONAL HIERARCHY, ECOSYSTEM MASTER, ASSIGNMENTS & TASKS
+// ============================================================================
+
+model Division {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique @db.VarChar(30)
+  name        String   @db.VarChar(150)
+  description String?  @db.Text
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  users         User[]         @relation("DivisionUsers")
+  divisionPorts DivisionPort[]
+
+  @@map("divisions")
+}
+
+model DivisionPort {
+  id         Int      @id @default(autoincrement())
+  divisionId Int      @map("division_id")
+  portId     Int      @map("port_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  division Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  port     Port     @relation(fields: [portId], references: [id], onDelete: Restrict)
+
+  @@unique([divisionId, portId])
+  @@index([portId])
+  @@map("division_ports")
+}
+
+model Permission {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique @db.VarChar(80)
+  name        String   @db.VarChar(150)
+  module      String   @db.VarChar(60)
+  description String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  rolePermissions RolePermission[]
+
+  @@index([module])
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           Int      @id @default(autoincrement())
+  role         UserRole
+  permissionId Int      @map("permission_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([role, permissionId])
+  @@index([role])
+  @@map("role_permissions")
+}
+
+model Terminal {
+  id            Int           @id @default(autoincrement())
+  portId        Int           @map("port_id")
+  code          String        @db.VarChar(30)
+  name          String        @db.VarChar(150)
+  terminalType  TerminalType  @default(MULTIPURPOSE) @map("terminal_type")
+  terminalClass TerminalClass @default(KELAS_B) @map("terminal_class")
+  description   String?       @db.Text
+  isActive      Boolean       @default(true) @map("is_active")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  port             Port              @relation(fields: [portId], references: [id], onDelete: Restrict)
+  berths           Berth[]
+  zones            PortZone[]
+  facilities       PortFacility[]
+  assignments      UserAssignment[]
+  tasks            Task[]
+  dailyPortReports DailyPortReport[]
+
+  @@unique([portId, code])
+  @@unique([portId, id])
+  @@map("terminals")
+}
+
+model PortZone {
+  id          Int      @id @default(autoincrement())
+  portId      Int      @map("port_id")
+  terminalId  Int?     @map("terminal_id")
+  berthId     Int?     @map("berth_id")
+  code        String   @db.VarChar(30)
+  name        String   @db.VarChar(150)
+  zoneType    ZoneType @default(AREA_DERMAGA) @map("zone_type")
+  areaSqm     Decimal? @map("area_sqm") @db.Decimal(10, 2)
+  description String?  @db.Text
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  port        Port             @relation(fields: [portId], references: [id], onDelete: Restrict)
+  terminal    Terminal?        @relation(fields: [terminalId], references: [id], onDelete: Restrict)
+  berth       Berth?           @relation(fields: [berthId], references: [id], onDelete: Restrict)
+  facilities  PortFacility[]
+  assignments UserAssignment[]
+  tasks       Task[]
+
+  @@unique([portId, code])
+  @@index([portId, berthId])
+  @@map("port_zones")
+}
+
+model PortFacility {
+  id              Int                     @id @default(autoincrement())
+  portId          Int                     @map("port_id")
+  terminalId      Int?                    @map("terminal_id")
+  berthId         Int?                    @map("berth_id")
+  zoneId          Int?                    @map("zone_id")
+  code            String                  @db.VarChar(40)
+  name            String                  @db.VarChar(150)
+  facilityType    String                  @map("facility_type") @db.VarChar(80)
+  conditionStatus FacilityConditionStatus @default(GOOD) @map("condition_status")
+  specifications  Json?
+  isActive        Boolean                 @default(true) @map("is_active")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  updatedAt       DateTime                @updatedAt @map("updated_at")
+
+  port     Port      @relation(fields: [portId], references: [id], onDelete: Restrict)
+  terminal Terminal? @relation(fields: [terminalId], references: [id], onDelete: Restrict)
+  berth    Berth?    @relation(fields: [berthId], references: [id], onDelete: Restrict)
+  zone     PortZone? @relation(fields: [zoneId], references: [id], onDelete: Restrict)
+
+  @@unique([portId, code])
+  @@index([portId, conditionStatus])
+  @@map("port_facilities")
+}
+
+model UserAssignment {
+  id              Int              @id @default(autoincrement())
+  assignmentCode  String           @unique @map("assignment_code") @db.VarChar(60)
+  userId          Int              @map("user_id")
+  role            UserRole
+  portId          Int              @map("port_id")
+  terminalId      Int?             @map("terminal_id")
+  berthId         Int?             @map("berth_id")
+  zoneId          Int?             @map("zone_id")
+  taskTypes       TaskType[]       @default([]) @map("task_types")
+  permissionCodes String[]         @default([]) @map("permission_codes")
+  startDate       DateTime         @map("start_date")
+  endDate         DateTime?        @map("end_date")
+  status          AssignmentStatus @default(ACTIVE)
+  assignedById    Int              @map("assigned_by_id")
+  notes           String?          @db.Text
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  user       User      @relation("AssignedUser", fields: [userId], references: [id], onDelete: Restrict)
+  port       Port      @relation(fields: [portId], references: [id], onDelete: Restrict)
+  terminal   Terminal? @relation(fields: [terminalId], references: [id], onDelete: Restrict)
+  berth      Berth?    @relation(fields: [berthId], references: [id], onDelete: Restrict)
+  zone       PortZone? @relation(fields: [zoneId], references: [id], onDelete: Restrict)
+  assignedBy User      @relation("AssignmentGranter", fields: [assignedById], references: [id], onDelete: Restrict)
+  tasks      Task[]
+
+  @@index([userId, status])
+  @@index([portId, status])
+  @@index([portId, berthId, status])
+  @@map("user_assignments")
+}
+
+model TaskTemplate {
+  id              Int          @id @default(autoincrement())
+  code            String       @unique @db.VarChar(60)
+  taskType        TaskType     @unique @map("task_type")
+  titleTemplate   String       @map("title_template") @db.VarChar(200)
+  description     String       @db.Text
+  defaultPriority TaskPriority @default(MEDIUM) @map("default_priority")
+  slaMinutes      Int          @default(240) @map("sla_minutes")
+  sopReference    String?      @map("sop_reference") @db.VarChar(200)
+  isActive        Boolean      @default(true) @map("is_active")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  checklistItems TaskTemplateChecklistItem[]
+  tasks          Task[]
+
+  @@map("task_templates")
+}
+
+model TaskTemplateChecklistItem {
+  id                         Int              @id @default(autoincrement())
+  templateId                 Int              @map("template_id")
+  itemOrder                  Int              @map("item_order")
+  code                       String           @db.VarChar(60)
+  label                      String           @db.VarChar(255)
+  isRequired                 Boolean          @default(true) @map("is_required")
+  requiresAttachment         Boolean          @default(false) @map("requires_attachment")
+  applicableVesselCategories VesselCategory[] @default([]) @map("applicable_vessel_categories")
+
+  template TaskTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, code])
+  @@index([templateId, itemOrder])
+  @@map("task_template_checklist_items")
+}
+
+model Task {
+  id                Int                 @id @default(autoincrement())
+  taskNumber        String              @unique @map("task_number") @db.VarChar(60)
+  taskType          TaskType            @map("task_type")
+  templateId        Int?                @map("template_id")
+  title             String              @db.VarChar(200)
+  description       String              @db.Text
+  sourceType        TaskSourceType      @map("source_type")
+  sourceId          String?             @map("source_id") @db.VarChar(80)
+  portId            Int                 @map("port_id")
+  terminalId        Int?                @map("terminal_id")
+  berthId           Int?                @map("berth_id")
+  zoneId            Int?                @map("zone_id")
+  visitId           Int?                @map("visit_id")
+  assigneeId        Int?                @map("assignee_id")
+  assignmentId      Int?                @map("assignment_id")
+  createdById       Int?                @map("created_by_id")
+  priority          TaskPriority        @default(MEDIUM)
+  obligationDate    DateTime            @map("obligation_date") @db.Date
+  dueDate           DateTime            @map("due_date")
+  executionStatus   TaskExecutionStatus @default(NOT_STARTED) @map("execution_status")
+  reviewStatus      TaskReviewStatus    @default(NOT_SUBMITTED) @map("review_status")
+  isOverdue         Boolean             @default(false) @map("is_overdue")
+  hasIssue          Boolean             @default(false) @map("has_issue")
+  issueNotes        String?             @map("issue_notes") @db.Text
+  notes             String?             @db.Text
+  startedAt         DateTime?           @map("started_at")
+  submittedAt       DateTime?           @map("submitted_at")
+  adminReviewedById Int?                @map("admin_reviewed_by_id")
+  adminReviewedAt   DateTime?           @map("admin_reviewed_at")
+  adminReviewNotes  String?             @map("admin_review_notes") @db.Text
+  headVerifiedById  Int?                @map("head_verified_by_id")
+  headVerifiedAt    DateTime?           @map("head_verified_at")
+  headVerifyNotes   String?             @map("head_verify_notes") @db.Text
+  rejectionReason   String?             @map("rejection_reason") @db.Text
+  completedAt       DateTime?           @map("completed_at")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  template        TaskTemplate?       @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  port            Port                @relation(fields: [portId], references: [id], onDelete: Restrict)
+  terminal        Terminal?           @relation(fields: [terminalId], references: [id], onDelete: Restrict)
+  berth           Berth?              @relation(fields: [berthId], references: [id], onDelete: Restrict)
+  zone            PortZone?           @relation(fields: [zoneId], references: [id], onDelete: Restrict)
+  visit           ShipVisit?          @relation(fields: [visitId], references: [id], onDelete: Restrict)
+  assignee        User?               @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: Restrict)
+  assignment      UserAssignment?     @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
+  createdBy       User?               @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  adminReviewedBy User?               @relation("TaskAdminReviewer", fields: [adminReviewedById], references: [id], onDelete: Restrict)
+  headVerifiedBy  User?               @relation("TaskHeadVerifier", fields: [headVerifiedById], references: [id], onDelete: Restrict)
+  checklistItems  TaskChecklistItem[]
+  attachments     TaskAttachment[]
+  submissions     TaskSubmission[]
+  reviews         TaskReview[]
+  histories       TaskHistory[]
+
+  @@index([portId, executionStatus, reviewStatus])
+  @@index([portId, obligationDate, assigneeId])
+  @@index([portId, berthId])
+  @@index([portId, dueDate])
+  @@index([sourceType, sourceId])
+  @@map("tasks")
+}
+
+model TaskChecklistItem {
+  id                 Int      @id @default(autoincrement())
+  taskId             Int      @map("task_id")
+  itemOrder          Int      @map("item_order")
+  code               String   @db.VarChar(60)
+  label              String   @db.VarChar(255)
+  isRequired         Boolean  @default(true) @map("is_required")
+  isApplicable       Boolean  @default(true) @map("is_applicable")
+  requiresAttachment Boolean  @default(false) @map("requires_attachment")
+  checkedByOfficer   Boolean  @default(false) @map("checked_by_officer")
+  officerNotes       String?  @map("officer_notes") @db.Text
+  attachmentPath     String?  @map("attachment_path") @db.VarChar(255)
+  checkedByAdmin     Boolean  @default(false) @map("checked_by_admin")
+  adminNotes         String?  @map("admin_notes") @db.Text
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, code])
+  @@index([taskId, itemOrder])
+  @@map("task_checklist_items")
+}
+
+model TaskAttachment {
+  id           Int      @id @default(autoincrement())
+  taskId       Int      @map("task_id")
+  submissionId Int?     @map("submission_id")
+  fileName     String   @map("file_name") @db.VarChar(255)
+  filePath     String   @map("file_path") @db.VarChar(255)
+  mimeType     String   @map("mime_type") @db.VarChar(100)
+  uploadedById Int      @map("uploaded_by_id")
+  notes        String?  @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  task       Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  submission TaskSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+  uploadedBy User            @relation("TaskAttachmentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([taskId])
+  @@map("task_attachments")
+}
+
+model TaskSubmission {
+  id                Int      @id @default(autoincrement())
+  taskId            Int      @map("task_id")
+  submissionNumber  Int      @map("submission_number")
+  submittedById     Int      @map("submitted_by_id")
+  notes             String?  @db.Text
+  checklistSnapshot Json?    @map("checklist_snapshot")
+  submittedAt       DateTime @default(now()) @map("submitted_at")
+
+  task        Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  submittedBy User             @relation("TaskSubmitter", fields: [submittedById], references: [id], onDelete: Restrict)
+  attachments TaskAttachment[]
+  reviews     TaskReview[]
+
+  @@unique([taskId, submissionNumber])
+  @@index([taskId])
+  @@map("task_submissions")
+}
+
+model TaskReview {
+  id           Int             @id @default(autoincrement())
+  taskId       Int             @map("task_id")
+  submissionId Int?            @map("submission_id")
+  reviewStage  TaskReviewStage @map("review_stage")
+  reviewerId   Int             @map("reviewer_id")
+  reviewerRole UserRole        @map("reviewer_role")
+  decision     String          @db.VarChar(40)
+  notes        String?         @db.Text
+  reason       String?         @db.Text
+  evidencePath String?         @map("evidence_path") @db.VarChar(255)
+  createdAt    DateTime        @default(now()) @map("created_at")
+
+  task       Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  submission TaskSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+  reviewer   User            @relation("TaskReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+
+  @@index([taskId, reviewStage])
+  @@index([reviewerId])
+  @@map("task_reviews")
+}
+
+model TaskHistory {
+  id                  Int                  @id @default(autoincrement())
+  taskId              Int                  @map("task_id")
+  actorId             Int?                 @map("actor_id")
+  actorRole           UserRole?            @map("actor_role")
+  action              String               @db.VarChar(80)
+  fromExecutionStatus TaskExecutionStatus? @map("from_execution_status")
+  toExecutionStatus   TaskExecutionStatus? @map("to_execution_status")
+  fromReviewStatus    TaskReviewStatus?    @map("from_review_status")
+  toReviewStatus      TaskReviewStatus?    @map("to_review_status")
+  notes               String?              @db.Text
+  reason              String?              @db.Text
+  evidencePath        String?              @map("evidence_path") @db.VarChar(255)
+  createdAt           DateTime             @default(now()) @map("created_at")
+
+  task  Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  actor User? @relation("TaskHistoryActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([taskId, createdAt])
+  @@map("task_histories")
+}
+
+model NotificationPreference {
+  id           Int                  @id @default(autoincrement())
+  userId       Int                  @map("user_id")
+  category     String               @db.VarChar(60)
+  minPriority  NotificationPriority @default(INFORMATIONAL) @map("min_priority")
+  inAppEnabled Boolean              @default(true) @map("in_app_enabled")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, category])
+  @@map("notification_preferences")
+}
+

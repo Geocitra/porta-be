@@ -32,7 +32,7 @@ export class CreateUserDto {
   @MinLength(6)
   password!: string;
 
-  @ApiProperty({ example: 'Andi Petugas Dermaga' })
+  @ApiProperty({ example: 'Andi Petugas Pelabuhan' })
   @IsString()
   @IsNotEmpty()
   fullName!: string;
@@ -45,6 +45,11 @@ export class CreateUserDto {
   @IsOptional()
   @IsInt()
   portId?: number;
+
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional()
+  @IsInt()
+  divisionId?: number;
 
   @ApiPropertyOptional({ example: 1 })
   @IsOptional()
@@ -63,7 +68,7 @@ export class CreateUserDto {
 }
 
 export class UpdateUserDto {
-  @ApiPropertyOptional({ example: 'Andi Petugas Dermaga' })
+  @ApiPropertyOptional({ example: 'Andi Petugas Pelabuhan' })
   @IsOptional()
   @IsString()
   @IsNotEmpty()
@@ -93,6 +98,11 @@ export class UpdateUserDto {
   @IsInt()
   portId?: number | null;
 
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional()
+  @IsInt()
+  divisionId?: number | null;
+
   @ApiPropertyOptional({ example: true })
   @IsOptional()
   @IsBoolean()
@@ -100,7 +110,7 @@ export class UpdateUserDto {
 }
 
 export class UpdateUserStatusDto {
-  @ApiProperty({ example: true })
+  @ApiProperty({ example: false })
   @IsBoolean()
   isActive!: boolean;
 }
@@ -111,7 +121,7 @@ export class ResetUserPasswordDto {
   @MinLength(6)
   newPassword!: string;
 
-  @ApiPropertyOptional({ example: true, default: true })
+  @ApiPropertyOptional({ example: true })
   @IsOptional()
   @IsBoolean()
   mustChangePassword?: boolean;

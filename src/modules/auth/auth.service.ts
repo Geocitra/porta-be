@@ -5,6 +5,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { JwtService } from '@nestjs/jwt';
 import { OperatorProfile, UserRole, VerificationStatus } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
@@ -15,12 +16,22 @@ import { ChangeMyPasswordDto, UpdateMyProfileDto } from './dto/account.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterOperatorDto, RegisterTenantDto } from './dto/register.dto';
 
+export const COMPANY_ONBOARDED_EVENT = 'company.onboarded';
+
+export interface CompanyOnboardedEvent {
+  entityType: 'OPERATOR' | 'TENANT';
+  entityId: number;
+  companyName: string;
+  actorId: number;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly auditLog: AuditLogService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   private toAuthUserPayload(user: {
@@ -30,6 +41,7 @@ export class AuthService {
     fullName: string;
     role: UserRole;
     portId: number | null;
+    divisionId?: number | null;
     operatorId: number | null;
     tenantId: number | null;
     mustChangePassword: boolean;
@@ -43,6 +55,7 @@ export class AuthService {
       fullName: user.fullName,
       role: user.role,
       portId: user.portId,
+      divisionId: user.divisionId ?? null,
       operatorId: user.operatorId,
       operatorVerificationStatus: user.operator?.verificationStatus ?? null,
       tenantId: user.tenantId,
@@ -85,6 +98,7 @@ export class AuthService {
 
       await this.auditLog.record({
         actorId: user.id,
+        actorRole: user.role,
         action: 'OPERATOR_REGISTERED',
         entityName: 'ship_operators',
         entityId: operator.id,
@@ -94,6 +108,13 @@ export class AuthService {
 
       return { user, operator };
     });
+
+    this.eventEmitter.emit(COMPANY_ONBOARDED_EVENT, {
+      entityType: 'OPERATOR',
+      entityId: created.operator.id,
+      companyName: created.operator.name,
+      actorId: created.user.id,
+    } satisfies CompanyOnboardedEvent);
 
     const accessToken = await this.jwtService.signAsync({
       sub: created.user.id,
@@ -143,6 +164,7 @@ export class AuthService {
 
       await this.auditLog.record({
         actorId: user.id,
+        actorRole: user.role,
         action: 'TENANT_REGISTERED',
         entityName: 'tenants',
         entityId: tenant.id,
@@ -152,6 +174,13 @@ export class AuthService {
 
       return { user, tenant };
     });
+
+    this.eventEmitter.emit(COMPANY_ONBOARDED_EVENT, {
+      entityType: 'TENANT',
+      entityId: created.tenant.id,
+      companyName: created.tenant.name,
+      actorId: created.user.id,
+    } satisfies CompanyOnboardedEvent);
 
     const accessToken = await this.jwtService.signAsync({
       sub: created.user.id,
@@ -191,6 +220,16 @@ export class AuthService {
     if (!valid) {
       throw new UnauthorizedException('Kredensial salah atau akun tidak aktif');
     }
+
+    await this.auditLog.record({
+      actorId: user.id,
+      actorRole: user.role,
+      portId: user.portId,
+      action: 'USER_LOGIN',
+      entityName: 'users',
+      entityId: user.id,
+      afterData: { email: user.email, role: user.role, portId: user.portId },
+    });
 
     const accessToken = await this.jwtService.signAsync({
       sub: user.id,
@@ -267,6 +306,8 @@ export class AuthService {
 
       await this.auditLog.record({
         actorId: user.id,
+        actorRole: user.role,
+        portId: user.portId,
         action: 'USER_PROFILE_UPDATED',
         entityName: 'users',
         entityId: user.id,
@@ -305,6 +346,8 @@ export class AuthService {
 
       await this.auditLog.record({
         actorId: user.id,
+        actorRole: user.role,
+        portId: user.portId,
         action: 'USER_PASSWORD_CHANGED',
         entityName: 'users',
         entityId: user.id,
