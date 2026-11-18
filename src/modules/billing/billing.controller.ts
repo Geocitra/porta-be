@@ -190,6 +190,19 @@ export class BillingController {
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
+  @Get('adjustments')
+  @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.BENDAHARA,
+    UserRole.OPERATOR_KAPAL,
+  )
+  findAdjustments(@Req() req: { portScope: ScopeFilter }) {
+    return this.billingService.findAdjustments(req.portScope);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
   @Post('invoices/:id/adjustments')
   @Roles(
     UserRole.SUPERADMIN,
