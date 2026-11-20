@@ -47,7 +47,12 @@ export class BillingController {
   @Get('invoices')
   @Roles(
     UserRole.SUPERADMIN,
+    UserRole.KEPALA_DINAS,
+    UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
     UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
     UserRole.OPERATOR_KAPAL,
@@ -87,7 +92,11 @@ export class BillingController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
   @Post('visits/:visitId/advance-skrd')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
+  @Roles(
+    UserRole.KEPALA_PELABUHAN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.BENDAHARA,
+  )
   generateAdvanceSkrd(
     @Param('visitId', ParseIntPipe) visitId: number,
     @Body() dto: GenerateBillingDto,
@@ -106,7 +115,11 @@ export class BillingController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
   @Post('visits/:visitId/final-skrd')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
+  @Roles(
+    UserRole.KEPALA_PELABUHAN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.BENDAHARA,
+  )
   generateFinalSkrd(
     @Param('visitId', ParseIntPipe) visitId: number,
     @Body() dto: GenerateBillingDto,
@@ -125,7 +138,11 @@ export class BillingController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
   @Post('invoices/:id/issue')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
+  @Roles(
+    UserRole.KEPALA_PELABUHAN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.BENDAHARA,
+  )
   issueInvoice(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthenticatedUser,
@@ -137,7 +154,7 @@ export class BillingController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
   @Post('invoices/:id/void')
-  @Roles(UserRole.SUPERADMIN, UserRole.BENDAHARA)
+  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.BENDAHARA)
   voidInvoice(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: VoidInvoiceDto,
@@ -150,7 +167,7 @@ export class BillingController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
   @Post('invoices/:id/payments')
-  @Roles(UserRole.SUPERADMIN, UserRole.BENDAHARA)
+  @Roles(UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
   recordPayment(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RecordPaymentDto,
@@ -163,7 +180,7 @@ export class BillingController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
   @Post('invoices/:id/submit-payment')
-  @Roles(UserRole.OPERATOR_KAPAL, UserRole.SUPERADMIN)
+  @Roles(UserRole.OPERATOR_KAPAL, UserRole.BENDAHARA)
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   submitPaymentProof(
@@ -179,7 +196,7 @@ export class BillingController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
   @Post('payments/:paymentId/verify')
-  @Roles(UserRole.SUPERADMIN, UserRole.BENDAHARA)
+  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.BENDAHARA)
   verifyPayment(
     @Param('paymentId', ParseIntPipe) paymentId: number,
     @CurrentUser() user: AuthenticatedUser,
@@ -193,8 +210,12 @@ export class BillingController {
   @Get('adjustments')
   @Roles(
     UserRole.SUPERADMIN,
+    UserRole.KEPALA_DINAS,
+    UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
     UserRole.ADMIN_PELABUHAN,
     UserRole.BENDAHARA,
+    UserRole.DISHUB_EKSEKUTIF,
     UserRole.OPERATOR_KAPAL,
   )
   findAdjustments(@Req() req: { portScope: ScopeFilter }) {
@@ -205,7 +226,6 @@ export class BillingController {
   @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
   @Post('invoices/:id/adjustments')
   @Roles(
-    UserRole.SUPERADMIN,
     UserRole.ADMIN_PELABUHAN,
     UserRole.BENDAHARA,
     UserRole.OPERATOR_KAPAL,
@@ -222,7 +242,7 @@ export class BillingController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
   @Post('adjustments/:adjustmentId/decide')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
+  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
   decideAdjustment(
     @Param('adjustmentId', ParseIntPipe) adjustmentId: number,
     @Body() dto: DecideBillingAdjustmentDto,
@@ -232,4 +252,3 @@ export class BillingController {
     return this.billingService.decideAdjustment(adjustmentId, dto, actor, req.portScope);
   }
 }
-

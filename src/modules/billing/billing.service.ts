@@ -78,6 +78,9 @@ export class BillingService {
     return this.prisma.invoice.findMany({
       where: {
         ...(scope.portId ? { portId: scope.portId } : {}),
+        ...(scope.allowedPortIds && !scope.portId
+          ? { portId: { in: scope.allowedPortIds } }
+          : {}),
         ...(scope.operatorId ? { operatorId: scope.operatorId } : {}),
       },
       include: {
@@ -95,6 +98,9 @@ export class BillingService {
     return this.prisma.billingAdjustment.findMany({
       where: {
         ...(scope.portId ? { portId: scope.portId } : {}),
+        ...(scope.allowedPortIds && !scope.portId
+          ? { portId: { in: scope.allowedPortIds } }
+          : {}),
         ...(scope.operatorId
           ? { invoice: { operatorId: scope.operatorId } }
           : {}),

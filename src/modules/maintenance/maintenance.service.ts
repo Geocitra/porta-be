@@ -4,7 +4,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { MaintenanceStatus } from '@prisma/client';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { MaintenanceSeverity, MaintenanceStatus } from '@prisma/client';
 import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ScopeFilter } from '../../common/guards/port-scope.guard';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -16,17 +17,37 @@ import {
   UpdateMaintenanceStatusDto,
 } from './dto/maintenance.dto';
 
+export const MAINTENANCE_REPORTED_EVENT = 'maintenance.reported';
+
+export interface MaintenanceReportedEvent {
+  ticketId: number;
+  ticketNumber: string;
+  portId: number;
+  berthId?: number | null;
+  assetId?: number | null;
+  severity: MaintenanceSeverity;
+  title: string;
+  description: string;
+  reportedById: number;
+}
+
 @Injectable()
 export class MaintenanceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly auditLog: AuditLogService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   findAll(scope: ScopeFilter) {
     return this.prisma.maintenanceTicket.findMany({
-      where: { ...(scope.portId ? { portId: scope.portId } : {}) },
+      where: {
+        ...(scope.portId ? { portId: scope.portId } : {}),
+        ...(scope.allowedPortIds && !scope.portId
+          ? { portId: { in: scope.allowedPortIds } }
+          : {}),
+      },
       include: {
         berth: { select: { id: true, code: true, name: true } },
         asset: { select: { id: true, assetCode: true, name: true } },
@@ -69,8 +90,8 @@ export class MaintenanceService {
 
     const ticketNumber = DocNumberUtil.generate('MNT', dto.portId);
 
-    return this.prisma.$transaction(async (tx) => {
-      const ticket = await tx.maintenanceTicket.create({
+    const ticket = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.maintenanceTicket.create({
         data: {
           ticketNumber,
           portId: dto.portId,
@@ -86,15 +107,31 @@ export class MaintenanceService {
 
       await this.auditLog.record({
         actorId: actor.id,
+        actorRole: actor.role,
+        portId: dto.portId,
         action: 'MAINTENANCE_REPORTED',
         entityName: 'maintenance_tickets',
-        entityId: ticket.id,
-        afterData: ticket,
+        entityId: created.id,
+        afterData: created,
         tx,
       });
 
-      return ticket;
+      return created;
     });
+
+    this.eventEmitter.emit(MAINTENANCE_REPORTED_EVENT, {
+      ticketId: ticket.id,
+      ticketNumber: ticket.ticketNumber,
+      portId: ticket.portId,
+      berthId: ticket.berthId,
+      assetId: ticket.assetId,
+      severity: ticket.severity,
+      title: ticket.title,
+      description: ticket.description,
+      reportedById: actor.id,
+    } satisfies MaintenanceReportedEvent);
+
+    return ticket;
   }
 
   async updateStatus(
@@ -123,6 +160,8 @@ export class MaintenanceService {
 
       await this.auditLog.record({
         actorId: actor.id,
+        actorRole: actor.role,
+        portId: existing.portId,
         action: `MAINTENANCE_${dto.status}`,
         entityName: 'maintenance_tickets',
         entityId: ticketId,
@@ -135,4 +174,3 @@ export class MaintenanceService {
     });
   }
 }
-

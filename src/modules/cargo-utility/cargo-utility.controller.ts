@@ -21,14 +21,38 @@ import {
 export class CargoUtilityController {
   constructor(private readonly cargoUtilityService: CargoUtilityService) {}
 
+  @Get('cargo')
+  @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.KEPALA_DINAS,
+    UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+    UserRole.BENDAHARA,
+    UserRole.DISHUB_EKSEKUTIF,
+  )
+  listCargo(@Req() req: { portScope: ScopeFilter }) {
+    return this.cargoUtilityService.listCargoRecords(req.portScope);
+  }
+
   @Post('cargo')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.PETUGAS_DERMAGA)
-  createCargo(@Body() dto: CreateCargoRecordDto, @CurrentUser() actor: AuthenticatedUser) {
-    return this.cargoUtilityService.createCargoRecord(dto, actor);
+  @Roles(
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+  )
+  createCargo(
+    @Body() dto: CreateCargoRecordDto,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.cargoUtilityService.createCargoRecord(dto, actor, req.portScope);
   }
 
   @Post('cargo/:id/pay')
-  @Roles(UserRole.SUPERADMIN, UserRole.BENDAHARA)
+  @Roles(UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
   payCargo(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: PayChargeDto,
@@ -38,17 +62,38 @@ export class CargoUtilityController {
     return this.cargoUtilityService.payCargoRecord(id, dto, actor, req.portScope);
   }
 
+  @Get('equipment')
+  @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.KEPALA_DINAS,
+    UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+    UserRole.BENDAHARA,
+    UserRole.DISHUB_EKSEKUTIF,
+  )
+  listEquipment(@Req() req: { portScope: ScopeFilter }) {
+    return this.cargoUtilityService.listEquipmentRentals(req.portScope);
+  }
+
   @Post('equipment')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.PETUGAS_DERMAGA)
+  @Roles(
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+  )
   createEquipment(
     @Body() dto: CreateEquipmentRentalDto,
     @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
   ) {
-    return this.cargoUtilityService.createEquipmentRental(dto, actor);
+    return this.cargoUtilityService.createEquipmentRental(dto, actor, req.portScope);
   }
 
   @Post('equipment/:id/pay')
-  @Roles(UserRole.SUPERADMIN, UserRole.BENDAHARA)
+  @Roles(UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
   payEquipment(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: PayChargeDto,
@@ -61,9 +106,14 @@ export class CargoUtilityController {
   @Get('utilities')
   @Roles(
     UserRole.SUPERADMIN,
+    UserRole.KEPALA_DINAS,
+    UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
     UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
     UserRole.PETUGAS_DERMAGA,
     UserRole.BENDAHARA,
+    UserRole.DISHUB_EKSEKUTIF,
     UserRole.TENANT,
   )
   listUtilities(@Req() req: { portScope: ScopeFilter }) {
@@ -71,16 +121,21 @@ export class CargoUtilityController {
   }
 
   @Post('utilities')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.PETUGAS_DERMAGA)
+  @Roles(
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+  )
   createUtility(
     @Body() dto: CreateUtilityReadingDto,
     @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
   ) {
-    return this.cargoUtilityService.createUtilityReading(dto, actor);
+    return this.cargoUtilityService.createUtilityReading(dto, actor, req.portScope);
   }
 
   @Post('utilities/:id/pay')
-  @Roles(UserRole.SUPERADMIN, UserRole.BENDAHARA)
+  @Roles(UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
   payUtility(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: PayChargeDto,
@@ -90,4 +145,3 @@ export class CargoUtilityController {
     return this.cargoUtilityService.payUtilityReading(id, dto, actor, req.portScope);
   }
 }
-

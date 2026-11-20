@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import {
+  MaintenanceSeverity,
   TaskPriority,
   TaskSourceType,
   TaskType,
@@ -11,6 +12,20 @@ import {
   COMPANY_ONBOARDED_EVENT,
   CompanyOnboardedEvent,
 } from '../auth/auth.service';
+import {
+  CARGO_RECORD_CREATED_EVENT,
+  CargoRecordCreatedEvent,
+} from '../cargo-utility/cargo-utility.service';
+import {
+  GATE_HANDOVER_OPENED_EVENT,
+  GateHandoverOpenedEvent,
+  MANIFEST_CREATED_EVENT,
+  ManifestCreatedEvent,
+} from '../gate-ticketing/gate-ticketing.service';
+import {
+  MAINTENANCE_REPORTED_EVENT,
+  MaintenanceReportedEvent,
+} from '../maintenance/maintenance.service';
 import {
   DOCUMENT_UPLOADED_EVENT,
   DocumentUploadedEvent,
@@ -150,6 +165,84 @@ export class TaskTriggerListener {
       portId: visit.portId,
       visitId: visit.id,
       priority: TaskPriority.HIGH,
+      obligationDate: now.toISOString().slice(0, 10),
+      dueDate: due.toISOString(),
+    });
+  }
+
+  @OnEvent(MANIFEST_CREATED_EVENT)
+  async handleManifestCreated(event: ManifestCreatedEvent): Promise<void> {
+    const now = new Date();
+    const due = new Date(now.getTime() + 4 * 60 * 60 * 1000);
+    await this.tasksService.createTask({
+      taskType: TaskType.MANIFEST_CHECK,
+      title: `Pemeriksaan Manifest ${event.vesselName} (${event.manifestNumber})`,
+      description: `Periksa kelengkapan manifest muatan/penumpang (${event.manifestNumber}).`,
+      sourceType: TaskSourceType.MANIFEST,
+      sourceId: String(event.manifestId),
+      portId: event.portId,
+      visitId: event.visitId,
+      priority: TaskPriority.HIGH,
+      obligationDate: now.toISOString().slice(0, 10),
+      dueDate: due.toISOString(),
+    });
+  }
+
+  @OnEvent(CARGO_RECORD_CREATED_EVENT)
+  async handleCargoRecordCreated(event: CargoRecordCreatedEvent): Promise<void> {
+    const now = new Date();
+    const due = new Date(now.getTime() + 6 * 60 * 60 * 1000);
+    await this.tasksService.createTask({
+      taskType: TaskType.CARGO_HANDLING_CHECK,
+      title: `Pemeriksaan Bongkar Muat (${event.recordNumber})`,
+      description: `Verifikasi pencatatan bongkar muat: ${event.description}.`,
+      sourceType: TaskSourceType.CARGO_RECORD,
+      sourceId: String(event.recordId),
+      portId: event.portId,
+      visitId: event.visitId ?? undefined,
+      priority: TaskPriority.MEDIUM,
+      obligationDate: now.toISOString().slice(0, 10),
+      dueDate: due.toISOString(),
+    });
+  }
+
+  @OnEvent(GATE_HANDOVER_OPENED_EVENT)
+  async handleGateHandoverOpened(event: GateHandoverOpenedEvent): Promise<void> {
+    const now = new Date();
+    const due = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+    await this.tasksService.createTask({
+      taskType: TaskType.RETRIBUTION_COLLECTION,
+      title: `Pertanggungjawaban Karcis Pas Masuk (${event.bookCode} - ${event.wardenName})`,
+      description: `Verifikasi hasil penjualan karcis pas masuk buku ${event.bookCode} dengan kebijakan Zero Discrepancy.`,
+      sourceType: TaskSourceType.GATE_HANDOVER,
+      sourceId: String(event.handoverId),
+      portId: event.portId,
+      priority: TaskPriority.HIGH,
+      obligationDate: now.toISOString().slice(0, 10),
+      dueDate: due.toISOString(),
+    });
+  }
+
+  @OnEvent(MAINTENANCE_REPORTED_EVENT)
+  async handleMaintenanceReported(event: MaintenanceReportedEvent): Promise<void> {
+    const now = new Date();
+    const due = new Date(now.getTime() + 12 * 60 * 60 * 1000);
+    const priority =
+      event.severity === MaintenanceSeverity.CRITICAL
+        ? TaskPriority.CRITICAL
+        : event.severity === MaintenanceSeverity.HIGH
+          ? TaskPriority.HIGH
+          : TaskPriority.MEDIUM;
+
+    await this.tasksService.createTask({
+      taskType: TaskType.MAINTENANCE_HANDLING,
+      title: `Penanganan Pemeliharaan: ${event.title} (${event.ticketNumber})`,
+      description: event.description,
+      sourceType: TaskSourceType.MAINTENANCE_TICKET,
+      sourceId: String(event.ticketId),
+      portId: event.portId,
+      berthId: event.berthId ?? undefined,
+      priority,
       obligationDate: now.toISOString().slice(0, 10),
       dueDate: due.toISOString(),
     });

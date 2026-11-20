@@ -17,6 +17,10 @@ import {
   VISIT_CREATED_EVENT,
   VisitLifecycleEvent,
 } from '../visits/visits.service';
+import {
+  MAINTENANCE_REPORTED_EVENT,
+  MaintenanceReportedEvent,
+} from '../maintenance/maintenance.service';
 import { WARNING_ISSUED_EVENT, WarningIssuedEvent } from '../warnings/warnings.service';
 
 export interface CreateSmartNotificationParams {
@@ -449,6 +453,41 @@ export class NotificationsService {
         resourceId: event.berthingRecordId,
         dedupKey: `BERTHING_OVERRIDE_${event.berthingRecordId}_USER_${u.id}`,
         linkUrl: `/visits/${event.visitId}`,
+      });
+    }
+  }
+
+  @OnEvent(MAINTENANCE_REPORTED_EVENT)
+  async handleMaintenanceReported(event: MaintenanceReportedEvent): Promise<void> {
+    const recipients = await this.prisma.user.findMany({
+      where: {
+        isActive: true,
+        portId: event.portId,
+        role: { in: [UserRole.ADMIN_PELABUHAN, UserRole.KEPALA_PELABUHAN] },
+      },
+      select: { id: true },
+    });
+
+    const priority =
+      event.severity === 'CRITICAL'
+        ? NotificationPriority.CRITICAL
+        : event.severity === 'HIGH'
+          ? NotificationPriority.URGENT
+          : NotificationPriority.WARNING;
+
+    for (const u of recipients) {
+      await this.dispatchNotification({
+        userId: u.id,
+        portId: event.portId,
+        title: `Laporan Kerusakan Fasilitas/Aset (${event.ticketNumber})`,
+        message: `[${event.severity}] ${event.title}: ${event.description}`,
+        type: 'FACILITY_ASSET_DAMAGED',
+        category: 'MAINTENANCE',
+        priority,
+        resourceType: 'maintenance_tickets',
+        resourceId: event.ticketId,
+        dedupKey: `MAINT_${event.ticketId}_USER_${u.id}`,
+        linkUrl: `/maintenance`,
       });
     }
   }

@@ -35,7 +35,11 @@ export class MaintenanceController {
   @Get()
   @Roles(
     UserRole.SUPERADMIN,
+    UserRole.KEPALA_DINAS,
+    UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
     UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
     UserRole.PETUGAS_DERMAGA,
     UserRole.DISHUB_EKSEKUTIF,
   )
@@ -44,7 +48,12 @@ export class MaintenanceController {
   }
 
   @Post()
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.PETUGAS_DERMAGA)
+  @Roles(
+    UserRole.KEPALA_PELABUHAN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+  )
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('evidenceFile'))
   create(
@@ -57,7 +66,12 @@ export class MaintenanceController {
   }
 
   @Patch(':id/status')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.PETUGAS_DERMAGA)
+  @Roles(
+    UserRole.KEPALA_PELABUHAN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+  )
   updateStatus(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateMaintenanceStatusDto,
@@ -67,4 +81,3 @@ export class MaintenanceController {
     return this.maintenanceService.updateStatus(id, dto, actor, req.portScope);
   }
 }
-

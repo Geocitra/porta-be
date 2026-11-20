@@ -148,16 +148,28 @@ export class AssetsLeasesService {
       where: {
         isActive: true,
         ...(scope.portId ? { portId: scope.portId } : {}),
+        ...(scope.allowedPortIds && !scope.portId
+          ? { portId: { in: scope.allowedPortIds } }
+          : {}),
       },
       orderBy: { assetCode: 'asc' },
     });
   }
 
-  async createAsset(dto: CreatePortAssetDto, actor: AuthenticatedUser) {
+  async createAsset(
+    dto: CreatePortAssetDto,
+    actor: AuthenticatedUser,
+    scope?: ScopeFilter,
+  ) {
+    if (scope?.portId && dto.portId !== scope.portId) {
+      throw new ForbiddenException('Cross-port access denied');
+    }
     return this.prisma.$transaction(async (tx) => {
       const asset = await tx.portAsset.create({ data: dto });
       await this.auditLog.record({
         actorId: actor.id,
+        actorRole: actor.role,
+        portId: asset.portId,
         action: 'PORT_ASSET_CREATED',
         entityName: 'port_assets',
         entityId: asset.id,
@@ -168,9 +180,17 @@ export class AssetsLeasesService {
     });
   }
 
-  async updateAsset(assetId: number, dto: UpdatePortAssetDto, actor: AuthenticatedUser) {
+  async updateAsset(
+    assetId: number,
+    dto: UpdatePortAssetDto,
+    actor: AuthenticatedUser,
+    scope?: ScopeFilter,
+  ) {
     const existing = await this.prisma.portAsset.findUnique({ where: { id: assetId } });
     if (!existing) throw new NotFoundException(`Asset #${assetId} not found`);
+    if (scope?.portId && existing.portId !== scope.portId) {
+      throw new ForbiddenException('Cross-port access denied');
+    }
 
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.portAsset.update({
@@ -179,6 +199,8 @@ export class AssetsLeasesService {
       });
       await this.auditLog.record({
         actorId: actor.id,
+        actorRole: actor.role,
+        portId: existing.portId,
         action: 'PORT_ASSET_UPDATED',
         entityName: 'port_assets',
         entityId: assetId,
@@ -194,6 +216,9 @@ export class AssetsLeasesService {
     return this.prisma.assetLease.findMany({
       where: {
         ...(scope.portId ? { portId: scope.portId } : {}),
+        ...(scope.allowedPortIds && !scope.portId
+          ? { portId: { in: scope.allowedPortIds } }
+          : {}),
         ...(scope.tenantId ? { tenantId: scope.tenantId } : {}),
       },
       include: { asset: true, payments: true, tenant: true },

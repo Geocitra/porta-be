@@ -41,19 +41,32 @@ export class AssetsLeasesController {
   constructor(private readonly assetsLeasesService: AssetsLeasesService) {}
 
   @Get('tenants')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.KEPALA_DINAS,
+    UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+    UserRole.DISHUB_EKSEKUTIF,
+  )
   listTenants() {
     return this.assetsLeasesService.listTenants();
   }
 
   @Post('tenants')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  @Roles(
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+  )
   createMasterTenant(@Body() dto: CreateMasterTenantDto) {
     return this.assetsLeasesService.createMasterTenant(dto);
   }
 
   @Patch('tenants/:id')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN)
   updateMasterTenant(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateMasterTenantDto,
@@ -80,7 +93,7 @@ export class AssetsLeasesController {
   }
 
   @Patch('tenants/:id/verify')
-  @Roles(UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN)
   verifyTenant(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: VerifyTenantDto,
@@ -95,24 +108,35 @@ export class AssetsLeasesController {
   }
 
   @Post('assets')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
-  createAsset(@Body() dto: CreatePortAssetDto, @CurrentUser() actor: AuthenticatedUser) {
-    return this.assetsLeasesService.createAsset(dto, actor);
+  @Roles(UserRole.SUPERADMIN, UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN)
+  createAsset(
+    @Body() dto: CreatePortAssetDto,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.assetsLeasesService.createAsset(dto, actor, req.portScope);
   }
 
   @Patch('assets/:id')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.SUPERADMIN, UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN)
   updateAsset(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdatePortAssetDto,
     @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
   ) {
-    return this.assetsLeasesService.updateAsset(id, dto, actor);
+    return this.assetsLeasesService.updateAsset(id, dto, actor, req.portScope);
   }
 
   @Get('leases')
   @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.KEPALA_DINAS,
+    UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
     UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
     UserRole.TENANT,
@@ -132,7 +156,7 @@ export class AssetsLeasesController {
   }
 
   @Post('leases')
-  @Roles(UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN)
   createLease(
     @Body() dto: CreateAssetLeaseDto,
     @CurrentUser() actor: AuthenticatedUser,
@@ -142,7 +166,7 @@ export class AssetsLeasesController {
   }
 
   @Patch('leases/:id/approve')
-  @Roles(UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN)
   approveLease(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() actor: AuthenticatedUser,
@@ -152,7 +176,7 @@ export class AssetsLeasesController {
   }
 
   @Patch('leases/:id/reject')
-  @Roles(UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN)
   rejectLease(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RejectAssetLeaseDto,
@@ -163,7 +187,7 @@ export class AssetsLeasesController {
   }
 
   @Post('leases/:id/payments')
-  @Roles(UserRole.SUPERADMIN, UserRole.BENDAHARA)
+  @Roles(UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
   recordLeasePayment(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RecordLeasePaymentDto,
@@ -173,4 +197,3 @@ export class AssetsLeasesController {
     return this.assetsLeasesService.recordLeasePayment(id, dto, actor, req.portScope);
   }
 }
-

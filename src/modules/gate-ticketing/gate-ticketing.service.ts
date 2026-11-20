@@ -6,6 +6,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   GateTicketBookStatus,
   GeneralTariffDomain,
@@ -27,29 +28,68 @@ import {
   OpenGateHandoverDto,
 } from './dto/gate-ticketing.dto';
 
+export const MANIFEST_CREATED_EVENT = 'manifest.created';
+export const GATE_HANDOVER_OPENED_EVENT = 'gate.handover_opened';
+
+export interface ManifestCreatedEvent {
+  manifestId: number;
+  manifestNumber: string;
+  portId: number;
+  visitId: number;
+  vesselName: string;
+  vesselCategory: VesselCategory;
+  actorId: number;
+}
+
+export interface GateHandoverOpenedEvent {
+  handoverId: number;
+  portId: number;
+  bookCode: string;
+  wardenName: string;
+  actorId: number;
+}
+
 @Injectable()
 export class GateTicketingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditLog: AuditLogService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   listTicketBooks(scope: ScopeFilter) {
     return this.prisma.gateTicketBook.findMany({
-      where: { ...(scope.portId ? { portId: scope.portId } : {}) },
+      where: {
+        ...(scope.portId ? { portId: scope.portId } : {}),
+        ...(scope.allowedPortIds && !scope.portId
+          ? { portId: { in: scope.allowedPortIds } }
+          : {}),
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
 
   listHandovers(scope: ScopeFilter) {
     return this.prisma.gateWardenHandover.findMany({
-      where: { ...(scope.portId ? { portId: scope.portId } : {}) },
+      where: {
+        ...(scope.portId ? { portId: scope.portId } : {}),
+        ...(scope.allowedPortIds && !scope.portId
+          ? { portId: { in: scope.allowedPortIds } }
+          : {}),
+      },
       include: { book: true },
       orderBy: { dispatchTime: 'desc' },
     });
   }
 
-  async createTicketBook(dto: CreateGateTicketBookDto, actor: AuthenticatedUser) {
+  async createTicketBook(
+    dto: CreateGateTicketBookDto,
+    actor: AuthenticatedUser,
+    scope?: ScopeFilter,
+  ) {
+    if (scope?.portId && dto.portId !== scope.portId) {
+      throw new ForbiddenException('Cross-port access denied');
+    }
     if (dto.serialEnd < dto.serialStart) {
       throw new BadRequestException('serialEnd must be >= serialStart');
     }
@@ -63,6 +103,8 @@ export class GateTicketingService {
       });
       await this.auditLog.record({
         actorId: actor.id,
+        actorRole: actor.role,
+        portId: book.portId,
         action: 'GATE_BOOK_CREATED',
         entityName: 'gate_ticket_books',
         entityId: book.id,
@@ -90,8 +132,7 @@ export class GateTicketingService {
       throw new ConflictException('Ticket book is already exhausted');
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      // Optimistic locking: only one shift can claim a STOK book
+    const handover = await this.prisma.$transaction(async (tx) => {
       const claimed = await tx.gateTicketBook.updateMany({
         where: { id: book.id, status: GateTicketBookStatus.STOK },
         data: { status: GateTicketBookStatus.ACTIVE },
@@ -102,7 +143,7 @@ export class GateTicketingService {
         );
       }
 
-      const handover = await tx.gateWardenHandover.create({
+      const created = await tx.gateWardenHandover.create({
         data: {
           portId: book.portId,
           bookId: book.id,
@@ -115,15 +156,27 @@ export class GateTicketingService {
 
       await this.auditLog.record({
         actorId: actor.id,
+        actorRole: actor.role,
+        portId: book.portId,
         action: 'GATE_HANDOVER_OPENED',
         entityName: 'gate_warden_handovers',
-        entityId: handover.id,
-        afterData: handover,
+        entityId: created.id,
+        afterData: created,
         tx,
       });
 
-      return handover;
+      return created;
     });
+
+    this.eventEmitter.emit(GATE_HANDOVER_OPENED_EVENT, {
+      handoverId: handover.id,
+      portId: handover.portId,
+      bookCode: book.bookCode,
+      wardenName: handover.wardenName,
+      actorId: actor.id,
+    } satisfies GateHandoverOpenedEvent);
+
+    return handover;
   }
 
   async closeHandover(
@@ -161,7 +214,6 @@ export class GateTicketingService {
     const actualSettled = DecimalUtil.roundIdr(dto.actualCashSettledIdr);
     const unmatchedAmountIdr = actualSettled - expectedAmountIdr;
 
-    // Zero Discrepancy policy (aligned with MARS)
     if (unmatchedAmountIdr !== 0) {
       throw new BadRequestException(
         `Zero Discrepancy violation: expected Rp ${expectedAmountIdr}, settled Rp ${actualSettled} (diff: Rp ${unmatchedAmountIdr})`,
@@ -195,6 +247,8 @@ export class GateTicketingService {
 
       await this.auditLog.record({
         actorId: actor.id,
+        actorRole: actor.role,
+        portId: handover.portId,
         action: 'GATE_HANDOVER_SETTLED',
         entityName: 'gate_warden_handovers',
         entityId: handoverId,
@@ -216,13 +270,21 @@ export class GateTicketingService {
     });
   }
 
-  createFerryRoute(dto: CreateFerryRouteDto) {
+  createFerryRoute(dto: CreateFerryRouteDto, scope?: ScopeFilter) {
+    if (scope?.portId && dto.portId !== scope.portId) {
+      throw new ForbiddenException('Cross-port access denied');
+    }
     return this.prisma.ferryRoute.create({ data: dto });
   }
 
   listManifests(scope: ScopeFilter) {
     return this.prisma.vesselManifest.findMany({
-      where: { ...(scope.portId ? { portId: scope.portId } : {}) },
+      where: {
+        ...(scope.portId ? { portId: scope.portId } : {}),
+        ...(scope.allowedPortIds && !scope.portId
+          ? { portId: { in: scope.allowedPortIds } }
+          : {}),
+      },
       include: {
         visit: { select: { id: true, visitNumber: true, vessel: { select: { name: true } } } },
         ferryRoute: { select: { id: true, destinationName: true } },
@@ -231,10 +293,18 @@ export class GateTicketingService {
     });
   }
 
-  async createManifest(dto: CreateVesselManifestDto, actor: AuthenticatedUser) {
+  async createManifest(
+    dto: CreateVesselManifestDto,
+    actor: AuthenticatedUser,
+    scope?: ScopeFilter,
+  ) {
+    if (scope?.portId && dto.portId !== scope.portId) {
+      throw new ForbiddenException('Cross-port access denied');
+    }
+
     const visit = await this.prisma.shipVisit.findUnique({
       where: { id: dto.visitId },
-      include: { vessel: { select: { vesselCategory: true } } },
+      include: { vessel: { select: { name: true, vesselCategory: true } } },
     });
     if (!visit || visit.portId !== dto.portId) {
       throw new BadRequestException(`Visit #${dto.visitId} does not belong to port #${dto.portId}`);
@@ -261,7 +331,6 @@ export class GateTicketingService {
       throw new ConflictException(`Manifest already exists for visit #${dto.visitId}`);
     }
 
-    // Perda Mimika 4/2023 Lampiran XI D.2: resolve Terminal Penumpang tariff from general_tariffs (Zero Hardcoding!)
     const tClass = dto.terminalClass ?? TerminalClass.KELAS_B;
     const now = new Date();
     const [departTariff, greeterTariff] = await Promise.all([
@@ -302,8 +371,8 @@ export class GateTicketingService {
 
     const manifestNumber = DocNumberUtil.generate('MNF', dto.portId);
 
-    return this.prisma.$transaction(async (tx) => {
-      const manifest = await tx.vesselManifest.create({
+    const manifest = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.vesselManifest.create({
         data: {
           manifestNumber,
           portId: dto.portId,
@@ -324,15 +393,28 @@ export class GateTicketingService {
 
       await this.auditLog.record({
         actorId: actor.id,
+        actorRole: actor.role,
+        portId: dto.portId,
         action: 'VESSEL_MANIFEST_CREATED',
         entityName: 'vessel_manifests',
-        entityId: manifest.id,
-        afterData: manifest,
+        entityId: created.id,
+        afterData: created,
         tx,
       });
 
-      return manifest;
+      return created;
     });
+
+    this.eventEmitter.emit(MANIFEST_CREATED_EVENT, {
+      manifestId: manifest.id,
+      manifestNumber: manifest.manifestNumber,
+      portId: manifest.portId,
+      visitId: manifest.visitId,
+      vesselName: visit.vessel.name,
+      vesselCategory: visit.vessel.vesselCategory,
+      actorId: actor.id,
+    } satisfies ManifestCreatedEvent);
+
+    return manifest;
   }
 }
-

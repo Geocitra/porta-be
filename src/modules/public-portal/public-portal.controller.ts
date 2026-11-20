@@ -29,10 +29,6 @@ export class PublicPortalController {
     private readonly exchangeRateService: ExchangeRateService,
   ) {}
 
-  // ==========================================================================
-  // PUBLIC ENDPOINTS (No Auth Required - Landing Page & Public Tracking)
-  // ==========================================================================
-
   @Get('public/ports')
   getPublicPorts() {
     return this.publicPortalService.getPublicPorts();
@@ -68,13 +64,18 @@ export class PublicPortalController {
     return this.publicPortalService.trackComplaint(ticketNumber);
   }
 
-  // ==========================================================================
-  // STAFF COMPLAINT MANAGEMENT (Auth + PortScope Protected)
-  // ==========================================================================
-
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.PETUGAS_DERMAGA)
+  @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.KEPALA_DINAS,
+    UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+    UserRole.DISHUB_EKSEKUTIF,
+  )
   @Get('complaints')
   findStaffComplaints(@Req() req: { portScope: ScopeFilter }) {
     return this.publicPortalService.findStaffComplaints(req.portScope);
@@ -82,7 +83,12 @@ export class PublicPortalController {
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.PETUGAS_DERMAGA)
+  @Roles(
+    UserRole.KEPALA_PELABUHAN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+  )
   @Patch('complaints/:id/resolve')
   resolveComplaint(
     @Param('id', ParseIntPipe) id: number,
@@ -93,4 +99,3 @@ export class PublicPortalController {
     return this.publicPortalService.resolveComplaint(id, dto, actor, req.portScope);
   }
 }
-

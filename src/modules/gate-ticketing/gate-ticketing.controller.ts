@@ -35,36 +35,52 @@ export class GateTicketingController {
   @Get('books')
   @Roles(
     UserRole.SUPERADMIN,
+    UserRole.KEPALA_DINAS,
+    UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
     UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
     UserRole.PETUGAS_DERMAGA,
     UserRole.BENDAHARA,
+    UserRole.DISHUB_EKSEKUTIF,
   )
   listBooks(@Req() req: { portScope: ScopeFilter }) {
     return this.gateTicketingService.listTicketBooks(req.portScope);
   }
 
   @Post('books')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
   createBook(
     @Body() dto: CreateGateTicketBookDto,
     @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
   ) {
-    return this.gateTicketingService.createTicketBook(dto, actor);
+    return this.gateTicketingService.createTicketBook(dto, actor, req.portScope);
   }
 
   @Get('handovers')
   @Roles(
     UserRole.SUPERADMIN,
+    UserRole.KEPALA_DINAS,
+    UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
     UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
     UserRole.PETUGAS_DERMAGA,
     UserRole.BENDAHARA,
+    UserRole.DISHUB_EKSEKUTIF,
   )
   listHandovers(@Req() req: { portScope: ScopeFilter }) {
     return this.gateTicketingService.listHandovers(req.portScope);
   }
 
   @Post('handovers/open')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.PETUGAS_DERMAGA)
+  @Roles(
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+    UserRole.BENDAHARA,
+  )
   openHandover(
     @Body() dto: OpenGateHandoverDto,
     @CurrentUser() actor: AuthenticatedUser,
@@ -74,7 +90,7 @@ export class GateTicketingController {
   }
 
   @Post('handovers/:id/close')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
+  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
   closeHandover(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CloseGateHandoverDto,
@@ -90,15 +106,22 @@ export class GateTicketingController {
   }
 
   @Post('ferry-routes')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
-  createFerryRoute(@Body() dto: CreateFerryRouteDto) {
-    return this.gateTicketingService.createFerryRoute(dto);
+  @Roles(UserRole.SUPERADMIN, UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN)
+  createFerryRoute(
+    @Body() dto: CreateFerryRouteDto,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.gateTicketingService.createFerryRoute(dto, req.portScope);
   }
 
   @Get('manifests')
   @Roles(
     UserRole.SUPERADMIN,
+    UserRole.KEPALA_DINAS,
+    UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
     UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
     UserRole.PETUGAS_DERMAGA,
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
@@ -108,12 +131,16 @@ export class GateTicketingController {
   }
 
   @Post('manifests')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.PETUGAS_DERMAGA)
+  @Roles(
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+  )
   createManifest(
     @Body() dto: CreateVesselManifestDto,
     @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
   ) {
-    return this.gateTicketingService.createManifest(dto, actor);
+    return this.gateTicketingService.createManifest(dto, actor, req.portScope);
   }
 }
-

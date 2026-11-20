@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ChargePaymentStatus, LeaseStatus, VesselCategory } from '@prisma/client';
 import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ScopeFilter } from '../../common/guards/port-scope.guard';
@@ -19,12 +20,56 @@ import {
   PayChargeDto,
 } from './dto/cargo-utility.dto';
 
+export const CARGO_RECORD_CREATED_EVENT = 'cargo.record_created';
+
+export interface CargoRecordCreatedEvent {
+  recordId: number;
+  recordNumber: string;
+  portId: number;
+  visitId?: number | null;
+  description: string;
+  actorId: number;
+}
+
 @Injectable()
 export class CargoUtilityService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditLog: AuditLogService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
+
+  listCargoRecords(scope: ScopeFilter) {
+    return this.prisma.cargoHandlingRecord.findMany({
+      where: {
+        ...(scope.portId ? { portId: scope.portId } : {}),
+        ...(scope.allowedPortIds && !scope.portId
+          ? { portId: { in: scope.allowedPortIds } }
+          : {}),
+      },
+      include: {
+        visit: { select: { id: true, visitNumber: true, vessel: { select: { name: true } } } },
+        recordedBy: { select: { id: true, fullName: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  listEquipmentRentals(scope: ScopeFilter) {
+    return this.prisma.equipmentRentalRecord.findMany({
+      where: {
+        ...(scope.portId ? { portId: scope.portId } : {}),
+        ...(scope.allowedPortIds && !scope.portId
+          ? { portId: { in: scope.allowedPortIds } }
+          : {}),
+      },
+      include: {
+        visit: { select: { id: true, visitNumber: true, vessel: { select: { name: true } } } },
+        recordedBy: { select: { id: true, fullName: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
 
   async listUtilities(scope: ScopeFilter) {
     if (scope.tenantId) {
@@ -59,13 +104,24 @@ export class CargoUtilityService {
     return this.prisma.utilityMeterReading.findMany({
       where: {
         ...(scope.portId ? { portId: scope.portId } : {}),
+        ...(scope.allowedPortIds && !scope.portId
+          ? { portId: { in: scope.allowedPortIds } }
+          : {}),
       },
       include: { asset: true },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async createCargoRecord(dto: CreateCargoRecordDto, actor: AuthenticatedUser) {
+  async createCargoRecord(
+    dto: CreateCargoRecordDto,
+    actor: AuthenticatedUser,
+    scope?: ScopeFilter,
+  ) {
+    if (scope?.portId && dto.portId !== scope.portId) {
+      throw new ForbiddenException('Cross-port access denied');
+    }
+
     const visit = await this.assertVisitBelongsToPort(dto.portId, dto.visitId);
     if (visit && visit.vessel.vesselCategory === VesselCategory.PENUMPANG) {
       throw new BadRequestException(
@@ -82,8 +138,8 @@ export class CargoUtilityService {
     const totalAmountIdr = DecimalUtil.roundIdr(dto.quantity * days * ratePerUnitIdr);
     const recordNumber = DocNumberUtil.generate('CRG', dto.portId);
 
-    return this.prisma.$transaction(async (tx) => {
-      const record = await tx.cargoHandlingRecord.create({
+    const record = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.cargoHandlingRecord.create({
         data: {
           recordNumber,
           portId: dto.portId,
@@ -102,15 +158,28 @@ export class CargoUtilityService {
 
       await this.auditLog.record({
         actorId: actor.id,
+        actorRole: actor.role,
+        portId: dto.portId,
         action: 'CARGO_RECORD_CREATED',
         entityName: 'cargo_handling_records',
-        entityId: record.id,
-        afterData: record,
+        entityId: created.id,
+        afterData: created,
         tx,
       });
 
-      return record;
+      return created;
     });
+
+    this.eventEmitter.emit(CARGO_RECORD_CREATED_EVENT, {
+      recordId: record.id,
+      recordNumber: record.recordNumber,
+      portId: record.portId,
+      visitId: record.visitId,
+      description: record.description,
+      actorId: actor.id,
+    } satisfies CargoRecordCreatedEvent);
+
+    return record;
   }
 
   async payCargoRecord(
@@ -145,6 +214,8 @@ export class CargoUtilityService {
 
       await this.auditLog.record({
         actorId: actor.id,
+        actorRole: actor.role,
+        portId: existing.portId,
         action: 'CARGO_RECORD_PAID',
         entityName: 'cargo_handling_records',
         entityId: id,
@@ -156,7 +227,15 @@ export class CargoUtilityService {
     });
   }
 
-  async createEquipmentRental(dto: CreateEquipmentRentalDto, actor: AuthenticatedUser) {
+  async createEquipmentRental(
+    dto: CreateEquipmentRentalDto,
+    actor: AuthenticatedUser,
+    scope?: ScopeFilter,
+  ) {
+    if (scope?.portId && dto.portId !== scope.portId) {
+      throw new ForbiddenException('Cross-port access denied');
+    }
+
     await this.assertVisitBelongsToPort(dto.portId, dto.visitId);
 
     const ratePerHourIdr = await this.resolveRateOrUseProvided(
@@ -186,6 +265,8 @@ export class CargoUtilityService {
 
       await this.auditLog.record({
         actorId: actor.id,
+        actorRole: actor.role,
+        portId: dto.portId,
         action: 'EQUIPMENT_RENTAL_CREATED',
         entityName: 'equipment_rental_records',
         entityId: rental.id,
@@ -229,6 +310,8 @@ export class CargoUtilityService {
 
       await this.auditLog.record({
         actorId: actor.id,
+        actorRole: actor.role,
+        portId: existing.portId,
         action: 'EQUIPMENT_RENTAL_PAID',
         entityName: 'equipment_rental_records',
         entityId: id,
@@ -240,7 +323,14 @@ export class CargoUtilityService {
     });
   }
 
-  async createUtilityReading(dto: CreateUtilityReadingDto, actor: AuthenticatedUser) {
+  async createUtilityReading(
+    dto: CreateUtilityReadingDto,
+    actor: AuthenticatedUser,
+    scope?: ScopeFilter,
+  ) {
+    if (scope?.portId && dto.portId !== scope.portId) {
+      throw new ForbiddenException('Cross-port access denied');
+    }
     if (!dto.visitId && !dto.assetId) {
       throw new BadRequestException('Either visitId or assetId must be specified');
     }
@@ -285,6 +375,8 @@ export class CargoUtilityService {
 
       await this.auditLog.record({
         actorId: actor.id,
+        actorRole: actor.role,
+        portId: dto.portId,
         action: 'UTILITY_READING_CREATED',
         entityName: 'utility_meter_readings',
         entityId: reading.id,
@@ -328,6 +420,8 @@ export class CargoUtilityService {
 
       await this.auditLog.record({
         actorId: actor.id,
+        actorRole: actor.role,
+        portId: existing.portId,
         action: 'UTILITY_READING_PAID',
         entityName: 'utility_meter_readings',
         entityId: id,
@@ -368,4 +462,3 @@ export class CargoUtilityService {
     return visit;
   }
 }
-

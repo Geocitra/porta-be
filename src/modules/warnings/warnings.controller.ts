@@ -19,6 +19,9 @@ export class WarningsController {
   @Get()
   @Roles(
     UserRole.SUPERADMIN,
+    UserRole.KEPALA_DINAS,
+    UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
     UserRole.ADMIN_PELABUHAN,
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
@@ -29,7 +32,7 @@ export class WarningsController {
   }
 
   @Post()
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
+  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
   issue(
     @Body() dto: IssueWarningDto,
     @CurrentUser() actor: AuthenticatedUser,
@@ -38,4 +41,3 @@ export class WarningsController {
     return this.warningsService.issue(dto, actor, req.portScope);
   }
 }
-
