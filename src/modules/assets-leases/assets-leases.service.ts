@@ -5,7 +5,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { BillingEligibility, LeaseStatus, PortAssetStatus, VerificationStatus } from '@prisma/client';
+import {
+  BillingEligibility,
+  LeaseStatus,
+  NotificationPriority,
+  PortAssetStatus,
+  UserRole,
+  VerificationStatus,
+} from '@prisma/client';
 import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ScopeFilter } from '../../common/guards/port-scope.guard';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -220,8 +227,16 @@ export class AssetsLeasesService {
           ? { portId: { in: scope.allowedPortIds } }
           : {}),
         ...(scope.tenantId ? { tenantId: scope.tenantId } : {}),
+        ...(scope.operatorId ? { operatorId: scope.operatorId } : {}),
       },
-      include: { asset: true, payments: true, tenant: true },
+      include: {
+        asset: true,
+        payments: true,
+        tenant: true,
+        operator: true,
+        verifiedByRoomOfficer: { select: { id: true, fullName: true, role: true } },
+        verifiedByHeadOfPort: { select: { id: true, fullName: true, role: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -231,17 +246,48 @@ export class AssetsLeasesService {
     actor: AuthenticatedUser,
     scope: ScopeFilter,
   ) {
-    if (!scope.tenantId) {
-      throw new ForbiddenException('Only tenant accounts can submit lease requests');
-    }
+    let tenantId: number | null = null;
+    let operatorId: number | null = null;
+    let applicantName = '';
+    let applicantNpwp: string | null = null;
+    let applicantPhone: string | null = null;
 
-    const tenant = await this.prisma.tenant.findUnique({ where: { id: scope.tenantId } });
-    if (!tenant || !tenant.isActive) {
-      throw new NotFoundException('Tenant profile not found or inactive');
-    }
-    if (tenant.verificationStatus !== VerificationStatus.VERIFIED) {
+    if (actor.role === UserRole.OPERATOR_KAPAL || scope.operatorId) {
+      const opId = scope.operatorId ?? actor.operatorId;
+      if (!opId) {
+        throw new ForbiddenException('Akun operator kapal tidak terhubung dengan profil operator');
+      }
+      const operator = await this.prisma.shipOperator.findUnique({ where: { id: opId } });
+      if (!operator || !operator.isActive) {
+        throw new NotFoundException('Profil operator kapal tidak ditemukan atau tidak aktif');
+      }
+      if (operator.verificationStatus !== VerificationStatus.VERIFIED) {
+        throw new ForbiddenException(
+          'Akun operator kapal harus berstatus VERIFIED oleh Admin Pelabuhan sebelum mengajukan sewa ruangan',
+        );
+      }
+      operatorId = operator.id;
+      applicantName = operator.name;
+      applicantNpwp = operator.npwp ?? null;
+      applicantPhone = operator.phone ?? null;
+    } else if (scope.tenantId || actor.tenantId) {
+      const tId = scope.tenantId ?? actor.tenantId;
+      const tenant = await this.prisma.tenant.findUnique({ where: { id: tId! } });
+      if (!tenant || !tenant.isActive) {
+        throw new NotFoundException('Tenant profile not found or inactive');
+      }
+      if (tenant.verificationStatus !== VerificationStatus.VERIFIED) {
+        throw new ForbiddenException(
+          'Akun tenant harus berstatus VERIFIED oleh Admin Pelabuhan sebelum mengajukan sewa aset',
+        );
+      }
+      tenantId = tenant.id;
+      applicantName = tenant.name;
+      applicantNpwp = tenant.npwp ?? null;
+      applicantPhone = tenant.phone ?? null;
+    } else {
       throw new ForbiddenException(
-        'Akun tenant harus berstatus VERIFIED oleh Admin Pelabuhan sebelum mengajukan sewa aset',
+        'Hanya akun Tenant atau Operator Kapal yang dapat mengajukan sewa ruangan/aset',
       );
     }
 
@@ -255,17 +301,18 @@ export class AssetsLeasesService {
     if (!asset || !asset.isActive) {
       throw new NotFoundException(`PortAsset #${dto.assetId} not found or inactive`);
     }
-    const activeLeaseSameTenant = await this.prisma.assetLease.findFirst({
+
+    const activeLeaseSameApplicant = await this.prisma.assetLease.findFirst({
       where: {
         assetId: asset.id,
-        tenantId: tenant.id,
+        ...(tenantId ? { tenantId } : { operatorId: operatorId! }),
         status: LeaseStatus.ACTIVE,
       },
     });
     const isValidRenewal =
       asset.status === PortAssetStatus.LEASED &&
-      Boolean(activeLeaseSameTenant) &&
-      startDate >= new Date(activeLeaseSameTenant!.endDate);
+      Boolean(activeLeaseSameApplicant) &&
+      startDate >= new Date(activeLeaseSameApplicant!.endDate);
 
     if (asset.status !== PortAssetStatus.AVAILABLE && !isValidRenewal) {
       throw new ConflictException(`Asset ${asset.assetCode} is not AVAILABLE`);
@@ -279,20 +326,21 @@ export class AssetsLeasesService {
     const existingPending = await this.prisma.assetLease.findFirst({
       where: {
         assetId: asset.id,
-        tenantId: tenant.id,
-        status: LeaseStatus.REQUESTED,
+        ...(tenantId ? { tenantId } : { operatorId: operatorId! }),
+        status: { in: [LeaseStatus.REQUESTED, LeaseStatus.PENDING_ROOM_OFFICER, LeaseStatus.PENDING_HEAD_OF_PORT] },
       },
     });
     if (existingPending) {
       throw new ConflictException(
-        `Anda sudah memiliki pengajuan sewa yang menunggu persetujuan untuk aset ${asset.assetCode}`,
+        `Anda sudah memiliki pengajuan sewa yang sedang diproses untuk aset ${asset.assetCode}`,
       );
     }
 
     const totalAnnualAmountIdr = DecimalUtil.roundIdr(
       DecimalUtil.toNumber(asset.areaSqm) * DecimalUtil.toNumber(asset.annualRatePerSqmIdr),
     );
-    const contractNumber = DocNumberUtil.generate('PKS-REQ', asset.portId);
+    // Request tracking code
+    const contractNumber = DocNumberUtil.generate('REQ-SWA', asset.portId);
 
     return this.prisma.$transaction(async (tx) => {
       const lease = await tx.assetLease.create({
@@ -300,20 +348,28 @@ export class AssetsLeasesService {
           contractNumber,
           portId: asset.portId,
           assetId: asset.id,
-          tenantId: tenant.id,
-          tenantName: tenant.name,
-          tenantNpwp: tenant.npwp,
-          tenantPhone: tenant.phone,
+          tenantId,
+          operatorId,
+          tenantName: applicantName,
+          tenantNpwp: applicantNpwp,
+          tenantPhone: applicantPhone,
           startDate,
           endDate,
           totalAnnualAmountIdr,
           status: LeaseStatus.REQUESTED,
           createdById: actor.id,
         },
+        include: {
+          asset: true,
+          tenant: true,
+          operator: true,
+        },
       });
 
       await this.auditLog.record({
         actorId: actor.id,
+        actorRole: actor.role,
+        portId: asset.portId,
         action: 'ASSET_LEASE_REQUESTED',
         entityName: 'asset_leases',
         entityId: lease.id,
@@ -322,6 +378,79 @@ export class AssetsLeasesService {
       });
 
       return lease;
+    });
+  }
+
+  async verifyRoomOfficer(
+    leaseId: number,
+    actor: AuthenticatedUser,
+    scope: ScopeFilter,
+  ) {
+    const lease = await this.prisma.assetLease.findUnique({
+      where: { id: leaseId },
+      include: { asset: true },
+    });
+    if (!lease) throw new NotFoundException(`AssetLease #${leaseId} not found`);
+    if (scope.portId && lease.portId !== scope.portId) {
+      throw new ForbiddenException('Cross-port access denied');
+    }
+    if (
+      lease.status !== LeaseStatus.REQUESTED &&
+      lease.status !== LeaseStatus.PENDING_ROOM_OFFICER
+    ) {
+      throw new BadRequestException(
+        `Hanya pengajuan berstatus REQUESTED yang dapat diverifikasi oleh Petugas Ruangan (status: ${lease.status})`,
+      );
+    }
+
+    // Saat diverifikasi oleh Petugas Ruangan, nomor PKS-SWA resmi di-generate
+    const contractNumber = DocNumberUtil.generate('PKS-SWA', lease.portId);
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.assetLease.update({
+        where: { id: leaseId },
+        data: {
+          contractNumber,
+          status: LeaseStatus.PENDING_HEAD_OF_PORT,
+          verifiedByRoomOfficerId: actor.id,
+          verifiedByRoomOfficerAt: new Date(),
+        },
+        include: {
+          asset: true,
+          tenant: true,
+          operator: true,
+          verifiedByRoomOfficer: { select: { id: true, fullName: true, role: true } },
+        },
+      });
+
+      await this.auditLog.record({
+        actorId: actor.id,
+        actorRole: actor.role,
+        portId: lease.portId,
+        action: 'ASSET_LEASE_VERIFIED_ROOM_OFFICER',
+        entityName: 'asset_leases',
+        entityId: leaseId,
+        beforeData: { status: lease.status },
+        afterData: updated,
+        tx,
+      });
+
+      if (lease.createdById) {
+        await tx.notification.create({
+          data: {
+            userId: lease.createdById,
+            portId: lease.portId,
+            title: 'Verifikasi Fisik Ruang Usaha Disetujui',
+            message: `Permohonan sewa tempat ${updated.asset?.name || ''} telah diverifikasi oleh Petugas Ruangan dan diteruskan ke Kepala Pelabuhan.`,
+            type: 'LEASE_VERIFIED',
+            category: 'LEASE',
+            priority: NotificationPriority.INFORMATIONAL,
+            linkUrl: lease.operatorId ? '/kapal/kontrak-sewa' : '/tenant/kontrak',
+          },
+        });
+      }
+
+      return updated;
     });
   }
 
@@ -338,14 +467,22 @@ export class AssetsLeasesService {
     if (scope.portId && lease.portId !== scope.portId) {
       throw new ForbiddenException('Cross-port access denied');
     }
-    if (lease.status !== LeaseStatus.REQUESTED) {
-      throw new BadRequestException(`Only REQUESTED leases can be approved (current: ${lease.status})`);
+    if (
+      lease.status !== LeaseStatus.PENDING_HEAD_OF_PORT &&
+      lease.status !== LeaseStatus.REQUESTED
+    ) {
+      throw new BadRequestException(
+        `Pengajuan sewa harus menunggu verifikasi Kepala Pelabuhan (status saat ini: ${lease.status})`,
+      );
     }
 
-    const contractNumber = DocNumberUtil.generate('PKS', lease.portId);
+    const contractNumber =
+      lease.contractNumber && lease.contractNumber.startsWith('PKS-SWA')
+        ? lease.contractNumber
+        : DocNumberUtil.generate('PKS-SWA', lease.portId);
 
     return this.prisma.$transaction(async (tx) => {
-      const hasSameTenantActive = lease.tenantId
+      const hasSameApplicantActive = lease.tenantId
         ? await tx.assetLease.findFirst({
             where: {
               assetId: lease.assetId,
@@ -353,9 +490,17 @@ export class AssetsLeasesService {
               status: LeaseStatus.ACTIVE,
             },
           })
+        : lease.operatorId
+        ? await tx.assetLease.findFirst({
+            where: {
+              assetId: lease.assetId,
+              operatorId: lease.operatorId,
+              status: LeaseStatus.ACTIVE,
+            },
+          })
         : null;
 
-      if (!hasSameTenantActive) {
+      if (!hasSameApplicantActive) {
         const claimedAsset = await tx.portAsset.updateMany({
           where: { id: lease.assetId, status: PortAssetStatus.AVAILABLE },
           data: { status: PortAssetStatus.LEASED },
@@ -365,30 +510,51 @@ export class AssetsLeasesService {
         }
       }
 
-      const updatedLease = await tx.assetLease.updateMany({
-        where: { id: leaseId, status: LeaseStatus.REQUESTED },
+      const updated = await tx.assetLease.update({
+        where: { id: leaseId },
         data: {
           status: LeaseStatus.ACTIVE,
           contractNumber,
+          verifiedByHeadOfPortId: actor.id,
+          verifiedByHeadOfPortAt: new Date(),
+        },
+        include: {
+          asset: true,
+          tenant: true,
+          operator: true,
+          verifiedByRoomOfficer: { select: { id: true, fullName: true, role: true } },
+          verifiedByHeadOfPort: { select: { id: true, fullName: true, role: true } },
         },
       });
-      if (updatedLease.count === 0) {
-        throw new ConflictException(`Lease #${leaseId} status changed concurrently`);
-      }
-
-      const result = await tx.assetLease.findUnique({ where: { id: leaseId } });
 
       await this.auditLog.record({
         actorId: actor.id,
-        action: 'ASSET_LEASE_APPROVED',
+        actorRole: actor.role,
+        portId: lease.portId,
+        action: 'ASSET_LEASE_APPROVED_HEAD_OF_PORT',
         entityName: 'asset_leases',
         entityId: leaseId,
-        beforeData: { status: LeaseStatus.REQUESTED },
-        afterData: result,
+        beforeData: { status: lease.status },
+        afterData: updated,
         tx,
       });
 
-      return result;
+      if (lease.createdById) {
+        await tx.notification.create({
+          data: {
+            userId: lease.createdById,
+            portId: lease.portId,
+            title: 'Kontrak PKS Sewa Tempat Disetujui & Terbit',
+            message: `Selamat! Pengajuan sewa aset ${updated.asset?.name || ''} telah disahkan Kepala Pelabuhan (No. ${contractNumber}). Silakan lakukan pembayaran retribusi.`,
+            type: 'LEASE_APPROVED',
+            category: 'LEASE',
+            priority: NotificationPriority.URGENT,
+            linkUrl: lease.operatorId ? '/kapal/penagihan' : '/tenant/tagihan',
+          },
+        });
+      }
+
+      return updated;
     });
   }
 
@@ -404,31 +570,60 @@ export class AssetsLeasesService {
       throw new ForbiddenException('Cross-port access denied');
     }
 
+    const rejectableStatuses: LeaseStatus[] = [
+      LeaseStatus.REQUESTED,
+      LeaseStatus.PENDING_ROOM_OFFICER,
+      LeaseStatus.PENDING_HEAD_OF_PORT,
+    ];
+    if (!rejectableStatuses.includes(lease.status)) {
+      throw new BadRequestException(
+        `Hanya pengajuan berstatus pending/verifikasi yang dapat ditolak (status: ${lease.status})`,
+      );
+    }
+
     return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.assetLease.updateMany({
-        where: { id: leaseId, status: LeaseStatus.REQUESTED },
+      const updated = await tx.assetLease.update({
+        where: { id: leaseId },
         data: {
           status: LeaseStatus.REJECTED,
           rejectionReason: dto.rejectionReason,
         },
+        include: {
+          asset: true,
+          tenant: true,
+          operator: true,
+        },
       });
-      if (updated.count === 0) {
-        throw new BadRequestException(`Only REQUESTED leases can be rejected (current: ${lease.status})`);
-      }
-
-      const result = await tx.assetLease.findUnique({ where: { id: leaseId } });
 
       await this.auditLog.record({
         actorId: actor.id,
+        actorRole: actor.role,
+        portId: lease.portId,
         action: 'ASSET_LEASE_REJECTED',
         entityName: 'asset_leases',
         entityId: leaseId,
-        beforeData: { status: LeaseStatus.REQUESTED },
+        beforeData: { status: lease.status },
         afterData: { status: LeaseStatus.REJECTED, rejectionReason: dto.rejectionReason },
+        reason: dto.rejectionReason,
         tx,
       });
 
-      return result;
+      if (lease.createdById) {
+        await tx.notification.create({
+          data: {
+            userId: lease.createdById,
+            portId: lease.portId,
+            title: 'Pengajuan Sewa Tempat Ditolak',
+            message: `Permohonan sewa tempat ${updated.asset?.name || ''} belum disetujui. Alasan: ${dto.rejectionReason}`,
+            type: 'LEASE_REJECTED',
+            category: 'LEASE',
+            priority: NotificationPriority.WARNING,
+            linkUrl: lease.operatorId ? '/kapal/sewa-ruangan' : '/tenant/sewa',
+          },
+        });
+      }
+
+      return updated;
     });
   }
 
@@ -542,8 +737,111 @@ export class AssetsLeasesService {
         tx,
       });
 
+      if (lease.createdById) {
+        await tx.notification.create({
+          data: {
+            userId: lease.createdById,
+            portId: lease.portId,
+            title: 'Pembayaran Sewa PKS Berhasil Diverifikasi',
+            message: `Pembayaran sewa ${lease.contractNumber} Tahun ${payment.periodYear} sebesar Rp ${Number(payment.amountIdr).toLocaleString('id-ID')} telah disetorkan ke Kasda. Kuitansi e-SSRD resmi telah terbit.`,
+            type: 'PAYMENT_VERIFIED',
+            category: 'BILLING',
+            priority: NotificationPriority.INFORMATIONAL,
+            linkUrl: '/tenant/tagihan',
+          },
+        });
+      }
+
       return payment;
     });
+  }
+
+  async getLeasePaymentReceipt(paymentId: number, scope: ScopeFilter) {
+    const payment = await this.prisma.assetLeasePayment.findUnique({
+      where: { id: paymentId },
+      include: {
+        lease: {
+          include: {
+            port: true,
+            asset: true,
+            tenant: true,
+            operator: true,
+          },
+        },
+        verifiedBy: {
+          select: { id: true, fullName: true, role: true },
+        },
+      },
+    });
+
+    if (!payment) {
+      throw new NotFoundException(`Lease payment #${paymentId} not found`);
+    }
+
+    if (scope.portId && payment.lease.portId !== scope.portId) {
+      throw new ForbiddenException('Cross-port access denied');
+    }
+
+    if (scope.tenantId && payment.lease.tenantId !== scope.tenantId) {
+      throw new ForbiddenException('Cross-tenant access denied');
+    }
+
+    if (scope.operatorId && payment.lease.operatorId !== scope.operatorId) {
+      throw new ForbiddenException('Cross-operator access denied');
+    }
+
+    const ssrdNumber = `SSRD-PKS-${payment.periodYear}-${String(payment.id).padStart(6, '0')}`;
+
+    return {
+      documentTitle: 'SURAT SETORAN RETRIBUSI DAERAH (e-SSRD)',
+      subTitle: 'BUKTI PEMBAYARAN RETRIBUSI KEKAYAAN DAERAH (SEWA TANAH/BANGUNAN) SAH',
+      ssrdNumber,
+      contractNumber: payment.lease.contractNumber,
+      paymentDate: payment.paidAt,
+      taxPeriod: `Tahun Anggaran ${payment.periodYear}`,
+      portName: payment.lease.port.name,
+      portLocation: payment.lease.port.location,
+      taxPayer: {
+        tenantName: payment.lease.tenantName,
+        tenantNpwp:
+          payment.lease.tenantNpwp ||
+          payment.lease.tenant?.npwp ||
+          payment.lease.operator?.npwp ||
+          '-',
+        tenantPhone:
+          payment.lease.tenantPhone ||
+          payment.lease.tenant?.phone ||
+          payment.lease.operator?.phone ||
+          '-',
+        businessName:
+          payment.lease.tenant?.name ||
+          payment.lease.operator?.name ||
+          payment.lease.tenantName,
+        address:
+          payment.lease.tenant?.address ||
+          payment.lease.operator?.address ||
+          '-',
+      },
+      retributionObject: {
+        assetCode: payment.lease.asset.assetCode,
+        assetName: payment.lease.asset.name,
+        assetType: payment.lease.asset.assetType,
+        areaSqm: Number(payment.lease.asset.areaSqm),
+        annualRatePerSqmIdr: Number(payment.lease.asset.annualRatePerSqmIdr),
+        legalBasis: payment.lease.asset.legalBasis || 'Perda Kab. Mimika No. 4/2023 & Perbup No. 25/2024',
+        revenueAccountCode: '4.1.02.02.01 (Retribusi Pemanfaatan Kekayaan Daerah)',
+      },
+      paymentDetails: {
+        totalAnnualContractIdr: Number(payment.lease.totalAnnualAmountIdr),
+        periodYear: payment.periodYear,
+        amountPaidIdr: Number(payment.amountIdr),
+        idempotencyKey: payment.idempotencyKey,
+        paymentStatus: 'PAID',
+        verifiedByName: payment.verifiedBy?.fullName || 'Bendahara Penerimaan UPTD Pelabuhan',
+        verifiedAt: payment.paidAt,
+      },
+      qrValidationCode: `PORTA-SSRD-VERIFIED:${payment.lease.port.code}:${ssrdNumber}:${payment.idempotencyKey}`,
+    };
   }
 }
 

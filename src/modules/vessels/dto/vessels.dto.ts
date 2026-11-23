@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  ContractStatus,
   DocumentCategory,
   OperatorProfile,
   ShipType,
@@ -9,6 +10,7 @@ import {
 } from '@prisma/client';
 import {
   IsBoolean,
+  IsDateString,
   IsEmail,
   IsEnum,
   IsInt,
@@ -51,9 +53,10 @@ export class CreateOperatorDto {
 }
 
 export class CreateVesselDto {
-  @ApiProperty({ example: 1 })
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional()
   @IsInt()
-  operatorId!: number;
+  operatorId?: number;
 
   @ApiProperty({ example: 'REG-PMK-001' })
   @IsString()
@@ -237,3 +240,44 @@ export class UpdateVesselDto {
   @IsBoolean()
   isActive?: boolean;
 }
+
+export class CreateBerthingContractDto {
+  @ApiProperty({ example: 'PKS Pelayanan Sandar & Tambat 2026' })
+  @IsString()
+  @IsNotEmpty()
+  title!: string;
+
+  @ApiProperty({ example: 1 })
+  @IsInt()
+  portId!: number;
+
+  @ApiProperty({ example: '2026-01-01' })
+  @IsDateString()
+  startDate!: string;
+
+  @ApiProperty({ example: '2026-12-31' })
+  @IsDateString()
+  endDate!: string;
+
+  @ApiPropertyOptional({ example: 10 })
+  @IsOptional()
+  @IsInt()
+  monthlyQuota?: number;
+
+  @ApiPropertyOptional({ example: 'Dermaga Penumpang Poumako' })
+  @IsOptional()
+  @IsString()
+  dockAllocation?: string;
+}
+
+export class VerifyBerthingContractDto {
+  @ApiProperty({ enum: [ContractStatus.ACTIVE, ContractStatus.REJECTED] })
+  @IsEnum(ContractStatus)
+  status!: ContractStatus;
+
+  @ApiPropertyOptional({ example: 'Dokumen dan kuota sandar telah diverifikasi valid.' })
+  @IsOptional()
+  @IsString()
+  rejectionReason?: string;
+}
+

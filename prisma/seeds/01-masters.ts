@@ -390,6 +390,20 @@ export async function seedMasters(prisma: PrismaClient) {
       operatorId: null,
     },
     {
+      email: 'petugas.ruangan@porta.mimikakab.go.id',
+      fullName: 'Fransiskus Xaverius (Petugas Ruangan & Aset UPTD)',
+      role: UserRole.PETUGAS_RUANGAN,
+      portId: pomako.id,
+      operatorId: null,
+    },
+    {
+      email: 'kepala.pelabuhan@porta.mimikakab.go.id',
+      fullName: 'Drs. Daniel Rumbrar (Kepala UPTD Pelabuhan)',
+      role: UserRole.KEPALA_PELABUHAN,
+      portId: pomako.id,
+      operatorId: null,
+    },
+    {
       email: 'dishub@porta.mimikakab.go.id',
       fullName: 'Jania Basir, S.STP (Kepala Dinas Perhubungan Mimika)',
       role: UserRole.DISHUB_EKSEKUTIF,

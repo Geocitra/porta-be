@@ -5,18 +5,21 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { VerificationStatus, VesselCategory } from '@prisma/client';
+import { ContractStatus, VerificationStatus, VesselCategory } from '@prisma/client';
 import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ScopeFilter } from '../../common/guards/port-scope.guard';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditLogService } from '../../common/utils/audit-log.service';
+import { DocNumberUtil } from '../../common/utils/doc-number.util';
 import { StorageService, UploadedFilePayload } from '../../common/utils/storage.service';
 import {
+  CreateBerthingContractDto,
   CreateOperatorDto,
   CreateVesselDto,
   UpdateOperatorDto,
   UpdateVesselDto,
   UploadDocumentDto,
+  VerifyBerthingContractDto,
   VerifyEntityDto,
 } from './dto/vessels.dto';
 
@@ -160,14 +163,30 @@ export class VesselsService {
     });
   }
 
-  async updateOperator(operatorId: number, dto: UpdateOperatorDto, actor?: AuthenticatedUser) {
+  async updateOperator(
+    operatorId: number,
+    dto: UpdateOperatorDto,
+    actor?: AuthenticatedUser,
+    scope?: ScopeFilter,
+  ) {
+    if (scope?.operatorId && operatorId !== scope.operatorId) {
+      throw new ForbiddenException(
+        'Operator kapal hanya dapat memperbarui profil perusahaannya sendiri',
+      );
+    }
+
     const existing = await this.prisma.shipOperator.findUnique({ where: { id: operatorId } });
     if (!existing) throw new NotFoundException(`Operator #${operatorId} not found`);
+
+    const updateData: UpdateOperatorDto = { ...dto };
+    if (scope?.operatorId) {
+      delete updateData.isActive;
+    }
 
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.shipOperator.update({
         where: { id: operatorId },
-        data: dto,
+        data: updateData,
         include: { vessels: { where: { isActive: true } }, documents: true },
       });
 
@@ -249,6 +268,10 @@ export class VesselsService {
     scope: ScopeFilter,
     actor?: AuthenticatedUser,
   ) {
+    if (!dto.operatorId) {
+      throw new BadRequestException('Operator ID is required');
+    }
+
     if (scope.operatorId && dto.operatorId !== scope.operatorId) {
       throw new ForbiddenException('Cannot register vessel for another operator');
     }
@@ -261,7 +284,7 @@ export class VesselsService {
     return this.prisma.$transaction(async (tx) => {
       const created = await tx.vessel.create({
         data: {
-          operatorId: dto.operatorId,
+          operatorId: dto.operatorId!,
           registrationNumber: dto.registrationNumber,
           imoNumber: dto.imoNumber,
           name: dto.name,
@@ -306,14 +329,28 @@ export class VesselsService {
     });
   }
 
-  async updateVessel(vesselId: number, dto: UpdateVesselDto, actor?: AuthenticatedUser) {
+  async updateVessel(
+    vesselId: number,
+    dto: UpdateVesselDto,
+    actor?: AuthenticatedUser,
+    scope?: ScopeFilter,
+  ) {
     const existing = await this.prisma.vessel.findUnique({ where: { id: vesselId } });
     if (!existing) throw new NotFoundException(`Vessel #${vesselId} not found`);
+    if (scope?.operatorId && existing.operatorId !== scope.operatorId) {
+      throw new ForbiddenException('Cannot update vessel of another operator');
+    }
+
+    const sanitizedData: UpdateVesselDto = { ...dto };
+    if (scope?.operatorId) {
+      delete sanitizedData.operatorId;
+      delete sanitizedData.isActive;
+    }
 
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.vessel.update({
         where: { id: vesselId },
-        data: dto,
+        data: sanitizedData,
         include: {
           operator: {
             select: { id: true, name: true, operatorProfile: true, verificationStatus: true },
@@ -489,5 +526,161 @@ export class VesselsService {
     } satisfies DocumentUploadedEvent);
 
     return doc;
+  }
+
+  async getOperatorContracts(operatorId: number, scope: ScopeFilter) {
+    if (scope.operatorId && operatorId !== scope.operatorId) {
+      throw new ForbiddenException('Cannot view contracts for another operator');
+    }
+    return this.prisma.operatorBerthingContract.findMany({
+      where: {
+        operatorId,
+        ...(scope.portId ? { portId: scope.portId } : {}),
+      },
+      include: {
+        port: { select: { id: true, code: true, name: true } },
+        verifiedBy: { select: { id: true, fullName: true, role: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async createOperatorContract(
+    operatorId: number,
+    dto: CreateBerthingContractDto,
+    file: UploadedFilePayload | undefined,
+    actor: AuthenticatedUser,
+    scope: ScopeFilter,
+  ) {
+    if (scope.operatorId && operatorId !== scope.operatorId) {
+      throw new ForbiddenException('Cannot create contract for another operator');
+    }
+    const operator = await this.prisma.shipOperator.findUnique({ where: { id: operatorId } });
+    if (!operator || !operator.isActive) {
+      throw new NotFoundException(`Operator #${operatorId} not found or inactive`);
+    }
+
+    const port = await this.prisma.port.findUnique({ where: { id: dto.portId } });
+    if (!port || !port.isActive) {
+      throw new NotFoundException(`Port #${dto.portId} not found or inactive`);
+    }
+
+    const startDate = new Date(dto.startDate);
+    const endDate = new Date(dto.endDate);
+    if (endDate <= startDate) {
+      throw new BadRequestException('endDate must be strictly after startDate');
+    }
+
+    let filePath: string | null = null;
+    let fileName: string | null = null;
+    if (file) {
+      filePath = await this.storage.saveFile(`contracts/berthing/${operatorId}`, file);
+      fileName = file.originalname;
+    }
+
+    const contractNumber = DocNumberUtil.generate('PKS-SDR', dto.portId);
+
+    return this.prisma.$transaction(async (tx) => {
+      const contract = await tx.operatorBerthingContract.create({
+        data: {
+          contractNumber,
+          title: dto.title,
+          operatorId,
+          portId: dto.portId,
+          startDate,
+          endDate,
+          monthlyQuota: dto.monthlyQuota,
+          dockAllocation: dto.dockAllocation,
+          filePath,
+          fileName,
+          status: ContractStatus.PENDING_VERIFICATION,
+        },
+        include: {
+          port: { select: { id: true, code: true, name: true } },
+          operator: { select: { id: true, name: true } },
+        },
+      });
+
+      await this.auditLog.record({
+        actorId: actor.id,
+        actorRole: actor.role,
+        portId: dto.portId,
+        action: 'OPERATOR_BERTHING_CONTRACT_REQUESTED',
+        entityName: 'operator_berthing_contracts',
+        entityId: contract.id,
+        afterData: contract,
+        tx,
+      });
+
+      return contract;
+    });
+  }
+
+  listPendingContracts(scope: ScopeFilter) {
+    return this.prisma.operatorBerthingContract.findMany({
+      where: {
+        status: ContractStatus.PENDING_VERIFICATION,
+        ...(scope.portId ? { portId: scope.portId } : {}),
+      },
+      include: {
+        operator: true,
+        port: { select: { id: true, code: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async verifyContract(
+    contractId: number,
+    dto: VerifyBerthingContractDto,
+    actor: AuthenticatedUser,
+    scope: ScopeFilter,
+  ) {
+    const existing = await this.prisma.operatorBerthingContract.findUnique({
+      where: { id: contractId },
+    });
+    if (!existing) {
+      throw new NotFoundException(`Berthing contract #${contractId} not found`);
+    }
+    if (scope.portId && existing.portId !== scope.portId) {
+      throw new ForbiddenException('Cross-port access denied');
+    }
+    if (existing.status !== ContractStatus.PENDING_VERIFICATION) {
+      throw new BadRequestException(
+        `Contract #${contractId} is not pending verification (current: ${existing.status})`,
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.operatorBerthingContract.update({
+        where: { id: contractId },
+        data: {
+          status: dto.status,
+          rejectionReason: dto.status === ContractStatus.REJECTED ? dto.rejectionReason : null,
+          verifiedById: actor.id,
+          verifiedAt: new Date(),
+        },
+        include: {
+          operator: true,
+          port: true,
+          verifiedBy: { select: { id: true, fullName: true, role: true } },
+        },
+      });
+
+      await this.auditLog.record({
+        actorId: actor.id,
+        actorRole: actor.role,
+        portId: existing.portId,
+        action: `OPERATOR_BERTHING_CONTRACT_${dto.status}`,
+        entityName: 'operator_berthing_contracts',
+        entityId: contractId,
+        beforeData: { status: existing.status },
+        afterData: { status: dto.status },
+        reason: dto.rejectionReason,
+        tx,
+      });
+
+      return updated;
+    });
   }
 }

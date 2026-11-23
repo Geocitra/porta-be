@@ -14,6 +14,9 @@ export class MidtransProvider implements PaymentProviderAdapter {
   private getServerKey(): string {
     const key = this.configService.get<string>('MIDTRANS_SERVER_KEY');
     if (!key) {
+      if (process.env.NODE_ENV !== 'production') {
+        return 'mock-sandbox-server-key';
+      }
       throw new ServiceUnavailableException('MIDTRANS_SERVER_KEY is not configured');
     }
     return key;
@@ -27,7 +30,15 @@ export class MidtransProvider implements PaymentProviderAdapter {
   }
 
   async createSnapSession(req: SnapSessionRequest): Promise<SnapSessionResult> {
-    const serverKey = this.getServerKey();
+    const serverKey = this.configService.get<string>('MIDTRANS_SERVER_KEY');
+    if (!serverKey || serverKey === 'mock' || serverKey === 'sandbox' || serverKey === 'mock-sandbox-server-key') {
+      const mockToken = `SNAP-MOCK-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+      return {
+        snapToken: mockToken,
+        redirectUrl: `https://app.sandbox.midtrans.com/snap/v2/vtweb/${mockToken}`,
+      };
+    }
+
     const authHeader = Buffer.from(`${serverKey}:`).toString('base64');
 
     const response = await fetch(this.getBaseUrl(), {

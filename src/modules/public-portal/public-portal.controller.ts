@@ -65,6 +65,26 @@ export class PublicPortalController {
   }
 
   @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    UserRole.TENANT,
+    UserRole.OPERATOR_KAPAL,
+    UserRole.SUPERADMIN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+    UserRole.PETUGAS_RUANGAN,
+  )
+  @Get('complaints/my')
+  findMyComplaints(@CurrentUser() user: AuthenticatedUser) {
+    return this.publicPortalService.findUserComplaints(user.email, user.fullName);
+  }
+
+  // ==========================================================================
+  // STAFF COMPLAINT MANAGEMENT (Auth + PortScope Protected)
+  // ==========================================================================
+
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
   @Roles(
     UserRole.SUPERADMIN,
@@ -74,6 +94,7 @@ export class PublicPortalController {
     UserRole.ADMIN_PELABUHAN,
     UserRole.PETUGAS_PELABUHAN,
     UserRole.PETUGAS_DERMAGA,
+    UserRole.PETUGAS_RUANGAN,
     UserRole.DISHUB_EKSEKUTIF,
   )
   @Get('complaints')
@@ -88,6 +109,7 @@ export class PublicPortalController {
     UserRole.ADMIN_PELABUHAN,
     UserRole.PETUGAS_PELABUHAN,
     UserRole.PETUGAS_DERMAGA,
+    UserRole.PETUGAS_RUANGAN,
   )
   @Patch('complaints/:id/resolve')
   resolveComplaint(

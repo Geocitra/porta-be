@@ -30,11 +30,12 @@ export class CargoUtilityController {
     UserRole.ADMIN_PELABUHAN,
     UserRole.PETUGAS_PELABUHAN,
     UserRole.PETUGAS_DERMAGA,
+    UserRole.PETUGAS_RUANGAN,
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
   )
   listCargo(@Req() req: { portScope: ScopeFilter }) {
-    return this.cargoUtilityService.listCargoRecords(req.portScope);
+    return this.cargoUtilityService.listCargo(req.portScope);
   }
 
   @Post('cargo')
@@ -71,11 +72,12 @@ export class CargoUtilityController {
     UserRole.ADMIN_PELABUHAN,
     UserRole.PETUGAS_PELABUHAN,
     UserRole.PETUGAS_DERMAGA,
+    UserRole.PETUGAS_RUANGAN,
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
   )
   listEquipment(@Req() req: { portScope: ScopeFilter }) {
-    return this.cargoUtilityService.listEquipmentRentals(req.portScope);
+    return this.cargoUtilityService.listEquipment(req.portScope);
   }
 
   @Post('equipment')
@@ -112,9 +114,11 @@ export class CargoUtilityController {
     UserRole.ADMIN_PELABUHAN,
     UserRole.PETUGAS_PELABUHAN,
     UserRole.PETUGAS_DERMAGA,
+    UserRole.PETUGAS_RUANGAN,
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
     UserRole.TENANT,
+    UserRole.OPERATOR_KAPAL,
   )
   listUtilities(@Req() req: { portScope: ScopeFilter }) {
     return this.cargoUtilityService.listUtilities(req.portScope);
@@ -125,6 +129,7 @@ export class CargoUtilityController {
     UserRole.ADMIN_PELABUHAN,
     UserRole.PETUGAS_PELABUHAN,
     UserRole.PETUGAS_DERMAGA,
+    UserRole.PETUGAS_RUANGAN,
   )
   createUtility(
     @Body() dto: CreateUtilityReadingDto,
@@ -143,5 +148,24 @@ export class CargoUtilityController {
     @Req() req: { portScope: ScopeFilter },
   ) {
     return this.cargoUtilityService.payUtilityReading(id, dto, actor, req.portScope);
+  }
+
+  @Get('utilities/:id/receipt')
+  @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.KEPALA_DINAS,
+    UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.BENDAHARA,
+    UserRole.PETUGAS_RUANGAN,
+    UserRole.TENANT,
+    UserRole.OPERATOR_KAPAL,
+  )
+  getUtilityReceipt(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.cargoUtilityService.getUtilityReceipt(id, req.portScope);
   }
 }

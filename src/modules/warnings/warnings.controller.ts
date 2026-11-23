@@ -26,6 +26,7 @@ export class WarningsController {
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
     UserRole.OPERATOR_KAPAL,
+    UserRole.TENANT,
   )
   findAll(@Req() req: { portScope: ScopeFilter }) {
     return this.warningsService.findAll(req.portScope);

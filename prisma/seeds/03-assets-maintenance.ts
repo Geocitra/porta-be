@@ -133,15 +133,20 @@ export async function seedAssetsAndMaintenance(
   }
 
   // 2. Asset Leases (PKS)
+  const demoTenant = await prisma.tenant.findFirst({
+    where: { email: 'tenant@sinarpapua.co.id' },
+  });
+
   const leasesData = [
     {
       contractNumber: 'PKS/DISHUB-MMK/AST-01/2024',
       assetId: assetMap.get('AST-PMK-KIOS-01')!,
-      tenantName: 'Mama Yosepha Karafir (Kantin Pelabuhan)',
-      tenantNpwp: '78.123.456.7-954.000',
-      tenantPhone: '081344556677',
+      tenantId: demoTenant?.id,
+      tenantName: demoTenant?.name || 'CV Sinar Papua Mandiri (Kantin Pelabuhan)',
+      tenantNpwp: demoTenant?.npwp || '02.111.222.3-954.000',
+      tenantPhone: demoTenant?.phone || '081234567890',
       startDate: new Date('2024-01-01'),
-      endDate: new Date('2025-12-31'),
+      endDate: new Date('2027-12-31'),
       totalAnnualAmountIdr: 2250000, // 15 sqm * 150.000
       status: LeaseStatus.ACTIVE,
     },

@@ -29,7 +29,11 @@ export interface AuthenticatedUser {
 }
 
 export function isPetugasRole(role: UserRole): boolean {
-  return role === UserRole.PETUGAS_PELABUHAN || role === UserRole.PETUGAS_DERMAGA;
+  return (
+    role === UserRole.PETUGAS_PELABUHAN ||
+    role === UserRole.PETUGAS_DERMAGA ||
+    role === UserRole.PETUGAS_RUANGAN
+  );
 }
 
 export function isKadisRole(role: UserRole): boolean {
@@ -38,9 +42,13 @@ export function isKadisRole(role: UserRole): boolean {
 
 export function expandEquivalentRoles(roles: UserRole[]): UserRole[] {
   const expanded = new Set<UserRole>(roles);
-  if (expanded.has(UserRole.PETUGAS_PELABUHAN) || expanded.has(UserRole.PETUGAS_DERMAGA)) {
+  if (
+    expanded.has(UserRole.PETUGAS_PELABUHAN) ||
+    expanded.has(UserRole.PETUGAS_DERMAGA)
+  ) {
     expanded.add(UserRole.PETUGAS_PELABUHAN);
     expanded.add(UserRole.PETUGAS_DERMAGA);
+    expanded.add(UserRole.PETUGAS_RUANGAN);
   }
   if (expanded.has(UserRole.KEPALA_DINAS) || expanded.has(UserRole.DISHUB_EKSEKUTIF)) {
     expanded.add(UserRole.KEPALA_DINAS);

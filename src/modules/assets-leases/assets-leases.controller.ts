@@ -49,6 +49,8 @@ export class AssetsLeasesController {
     UserRole.ADMIN_PELABUHAN,
     UserRole.PETUGAS_PELABUHAN,
     UserRole.PETUGAS_DERMAGA,
+    UserRole.PETUGAS_RUANGAN,
+    UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
   )
   listTenants() {
@@ -57,16 +59,19 @@ export class AssetsLeasesController {
 
   @Post('tenants')
   @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.KEPALA_PELABUHAN,
     UserRole.ADMIN_PELABUHAN,
     UserRole.PETUGAS_PELABUHAN,
     UserRole.PETUGAS_DERMAGA,
+    UserRole.PETUGAS_RUANGAN,
   )
   createMasterTenant(@Body() dto: CreateMasterTenantDto) {
     return this.assetsLeasesService.createMasterTenant(dto);
   }
 
   @Patch('tenants/:id')
-  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.SUPERADMIN, UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN)
   updateMasterTenant(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateMasterTenantDto,
@@ -137,16 +142,18 @@ export class AssetsLeasesController {
     UserRole.ADMIN_PELABUHAN,
     UserRole.PETUGAS_PELABUHAN,
     UserRole.PETUGAS_DERMAGA,
+    UserRole.PETUGAS_RUANGAN,
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
     UserRole.TENANT,
+    UserRole.OPERATOR_KAPAL,
   )
   listLeases(@Req() req: { portScope: ScopeFilter }) {
     return this.assetsLeasesService.listLeases(req.portScope);
   }
 
   @Post('leases/request')
-  @Roles(UserRole.TENANT)
+  @Roles(UserRole.TENANT, UserRole.OPERATOR_KAPAL)
   requestLease(
     @Body() dto: RequestAssetLeaseDto,
     @CurrentUser() actor: AuthenticatedUser,
@@ -165,6 +172,21 @@ export class AssetsLeasesController {
     return this.assetsLeasesService.createAndActivateLease(dto, actor, req.portScope);
   }
 
+  @Patch('leases/:id/verify-room')
+  @Roles(
+    UserRole.PETUGAS_RUANGAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.KEPALA_PELABUHAN,
+  )
+  verifyRoom(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.assetsLeasesService.verifyRoomOfficer(id, actor, req.portScope);
+  }
+
   @Patch('leases/:id/approve')
   @Roles(UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN)
   approveLease(
@@ -176,7 +198,12 @@ export class AssetsLeasesController {
   }
 
   @Patch('leases/:id/reject')
-  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN)
+  @Roles(
+    UserRole.PETUGAS_RUANGAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.KEPALA_PELABUHAN,
+    UserRole.ADMIN_PELABUHAN,
+  )
   rejectLease(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RejectAssetLeaseDto,
@@ -195,5 +222,25 @@ export class AssetsLeasesController {
     @Req() req: { portScope: ScopeFilter },
   ) {
     return this.assetsLeasesService.recordLeasePayment(id, dto, actor, req.portScope);
+  }
+
+  @Get('payments/:paymentId/receipt')
+  @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.KEPALA_DINAS,
+    UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.BENDAHARA,
+    UserRole.PETUGAS_RUANGAN,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.TENANT,
+    UserRole.OPERATOR_KAPAL,
+  )
+  getLeasePaymentReceipt(
+    @Param('paymentId', ParseIntPipe) paymentId: number,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.assetsLeasesService.getLeasePaymentReceipt(paymentId, req.portScope);
   }
 }

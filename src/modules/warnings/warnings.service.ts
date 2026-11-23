@@ -32,6 +32,9 @@ export class WarningsService {
   ) {}
 
   findAll(scope: ScopeFilter) {
+    if (scope.tenantId && !scope.operatorId) {
+      return [];
+    }
     return this.prisma.warning.findMany({
       where: {
         ...(scope.portId ? { portId: scope.portId } : {}),

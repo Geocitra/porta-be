@@ -125,6 +125,7 @@ export class GateTicketingController {
     UserRole.PETUGAS_DERMAGA,
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
+    UserRole.OPERATOR_KAPAL,
   )
   listManifests(@Req() req: { portScope: ScopeFilter }) {
     return this.gateTicketingService.listManifests(req.portScope);
@@ -135,6 +136,7 @@ export class GateTicketingController {
     UserRole.ADMIN_PELABUHAN,
     UserRole.PETUGAS_PELABUHAN,
     UserRole.PETUGAS_DERMAGA,
+    UserRole.OPERATOR_KAPAL,
   )
   createManifest(
     @Body() dto: CreateVesselManifestDto,

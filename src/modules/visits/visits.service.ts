@@ -13,6 +13,7 @@ import {
   BerthValidationResult,
   BillingEligibility,
   BillingStage,
+  ContractStatus,
   InvoiceStatus,
   ServiceCode,
   VerificationStatus,
@@ -221,6 +222,24 @@ export class VisitsService {
       if (vessel.verificationStatus !== VerificationStatus.VERIFIED) {
         throw new ForbiddenException(
           `Kapal "${vessel.name}" belum diverifikasi (Surat Ukur/GT) oleh Admin Pelabuhan`,
+        );
+      }
+
+      // Gatekeeper: PKS Sandar Kapal (Kontrak Payung) harus aktif dan disetujui Kepala Pelabuhan
+      const now = new Date();
+      const activeContract = await this.prisma.operatorBerthingContract.findFirst({
+        where: {
+          operatorId: vessel.operatorId,
+          portId: dto.portId,
+          status: ContractStatus.ACTIVE,
+          startDate: { lte: now },
+          endDate: { gte: now },
+        },
+      });
+
+      if (!activeContract) {
+        throw new ForbiddenException(
+          `Operator "${vessel.operator.name}" belum memiliki Perjanjian Kerja Sama (PKS Sandar Kapal) yang AKTIF dan disahkan Kepala Pelabuhan untuk pelabuhan ini. Pengajuan warta sandar ditolak sampai PKS Sandar disetujui.`,
         );
       }
     }
