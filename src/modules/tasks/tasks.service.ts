@@ -18,6 +18,7 @@ import {
   UserRole,
   VesselCategory,
 } from '@prisma/client';
+import { ROLE_GROUPS } from '../../common/authz/role-taxonomy';
 import {
   AuthenticatedUser,
   isPetugasRole,
@@ -425,7 +426,7 @@ export class TasksService {
     private readonly storage: StorageService,
     private readonly assignmentsService: AssignmentsService,
     private readonly eventEmitter: EventEmitter2,
-  ) {}
+  ) { }
 
   /**
    * Synchronizes overdue status for tasks whose dueDate has passed while not yet completed or cancelled.
@@ -588,26 +589,26 @@ export class TasksService {
       ...(filters?.isOverdue !== undefined ? { isOverdue: filters.isOverdue } : {}),
       ...(filters?.unsubmittedOnly
         ? {
-            executionStatus: {
-              in: [
-                TaskExecutionStatus.NOT_STARTED,
-                TaskExecutionStatus.IN_PROGRESS,
-                TaskExecutionStatus.OVERDUE,
-              ],
-            },
-          }
+          executionStatus: {
+            in: [
+              TaskExecutionStatus.NOT_STARTED,
+              TaskExecutionStatus.IN_PROGRESS,
+              TaskExecutionStatus.OVERDUE,
+            ],
+          },
+        }
         : {}),
       ...(filters?.obligationDate
         ? { obligationDate: new Date(filters.obligationDate) }
         : {}),
       ...(filters?.search
         ? {
-            OR: [
-              { title: { contains: filters.search, mode: 'insensitive' } },
-              { taskNumber: { contains: filters.search, mode: 'insensitive' } },
-              { description: { contains: filters.search, mode: 'insensitive' } },
-            ],
-          }
+          OR: [
+            { title: { contains: filters.search, mode: 'insensitive' } },
+            { taskNumber: { contains: filters.search, mode: 'insensitive' } },
+            { description: { contains: filters.search, mode: 'insensitive' } },
+          ],
+        }
         : {}),
     };
 
@@ -679,6 +680,89 @@ export class TasksService {
   }
 
   /**
+   * Determines the prioritized specialized officer roles for a given task type and context.
+   */
+  private getPreferredRolesForTask(params: {
+    taskType: TaskType;
+    vesselCategory?: VesselCategory | null;
+    sourceType?: TaskSourceType | null;
+  }): UserRole[] {
+    switch (params.taskType) {
+      case TaskType.COMPANY_REGISTRATION_CHECK:
+      case TaskType.DOCUMENT_VERIFICATION:
+        return [
+          UserRole.PETUGAS_REGISTRASI_KONTRAK,
+          UserRole.PETUGAS_PELABUHAN,
+          UserRole.ADMIN_PELABUHAN,
+        ];
+      case TaskType.CARGO_HANDLING_CHECK:
+        return [
+          UserRole.PETUGAS_DERMAGA_BARANG,
+          UserRole.PETUGAS_DERMAGA,
+          UserRole.PETUGAS_PELABUHAN,
+        ];
+      case TaskType.PASSENGER_SERVICE:
+        return [
+          UserRole.PETUGAS_DERMAGA_PENUMPANG,
+          UserRole.PETUGAS_DERMAGA,
+          UserRole.PETUGAS_PELABUHAN,
+        ];
+      case TaskType.VESSEL_ARRIVAL_CHECK:
+      case TaskType.BERTHING_INSPECTION:
+      case TaskType.MANIFEST_CHECK:
+      case TaskType.VESSEL_DEPARTURE_CLEARANCE:
+      case TaskType.SAFETY_INSPECTION:
+        if (params.vesselCategory === VesselCategory.BARANG) {
+          return [
+            UserRole.PETUGAS_DERMAGA_BARANG,
+            UserRole.PETUGAS_DERMAGA,
+            UserRole.PETUGAS_PELABUHAN,
+          ];
+        }
+        if (params.vesselCategory === VesselCategory.PENUMPANG) {
+          return [
+            UserRole.PETUGAS_DERMAGA_PENUMPANG,
+            UserRole.PETUGAS_DERMAGA,
+            UserRole.PETUGAS_PELABUHAN,
+          ];
+        }
+        return [
+          UserRole.PETUGAS_DERMAGA_PENUMPANG,
+          UserRole.PETUGAS_DERMAGA_BARANG,
+          UserRole.PETUGAS_DERMAGA,
+          UserRole.PETUGAS_PELABUHAN,
+        ];
+      case TaskType.ASSET_MANAGEMENT_CHECK:
+      case TaskType.FACILITY_INSPECTION:
+      case TaskType.MAINTENANCE_HANDLING:
+        return [
+          UserRole.PETUGAS_RUANGAN,
+          UserRole.PETUGAS_PELABUHAN,
+          UserRole.ADMIN_PELABUHAN,
+        ];
+      case TaskType.RETRIBUTION_COLLECTION:
+        if (params.sourceType === TaskSourceType.GATE_HANDOVER) {
+          return [
+            UserRole.BENDAHARA,
+            UserRole.PETUGAS_TAGIHAN,
+            UserRole.PETUGAS_PELABUHAN,
+          ];
+        }
+        return [
+          UserRole.PETUGAS_TAGIHAN,
+          UserRole.BENDAHARA,
+          UserRole.PETUGAS_PELABUHAN,
+        ];
+      default:
+        return [
+          UserRole.PETUGAS_DERMAGA,
+          UserRole.PETUGAS_PELABUHAN,
+          UserRole.ADMIN_PELABUHAN,
+        ];
+    }
+  }
+
+  /**
    * Resolves the best matching active officer assignment for auto-assigning a task.
    */
   private async resolveMatchingAssignment(params: {
@@ -686,6 +770,8 @@ export class TasksService {
     berthId?: number | null;
     terminalId?: number | null;
     taskType: TaskType;
+    vesselCategory?: VesselCategory | null;
+    sourceType?: TaskSourceType | null;
     preferredAssigneeId?: number | null;
   }) {
     const now = new Date();
@@ -705,6 +791,25 @@ export class TasksService {
       const typeOk = a.taskTypes.length === 0 || a.taskTypes.includes(params.taskType);
       return berthOk && typeOk;
     });
+
+    if (params.preferredAssigneeId && filtered.length > 0) {
+      const exactBerth = filtered.find((a) => params.berthId && a.berthId === params.berthId);
+      return exactBerth ?? filtered[0];
+    }
+
+    const preferredRoles = this.getPreferredRolesForTask({
+      taskType: params.taskType,
+      vesselCategory: params.vesselCategory,
+      sourceType: params.sourceType,
+    });
+
+    for (const targetRole of preferredRoles) {
+      const roleMatched = filtered.filter((a) => a.role === targetRole);
+      if (roleMatched.length > 0) {
+        const exactBerth = roleMatched.find((a) => params.berthId && a.berthId === params.berthId);
+        return exactBerth ?? roleMatched[0];
+      }
+    }
 
     // Prefer exact berth match over generic port-wide assignment
     const exactBerth = filtered.find((a) => params.berthId && a.berthId === params.berthId);
@@ -814,14 +919,36 @@ export class TasksService {
       berthId: dto.berthId,
       terminalId: dto.terminalId,
       taskType: dto.taskType,
+      vesselCategory,
+      sourceType: dto.sourceType ?? null,
       preferredAssigneeId:
         dto.assigneeId ?? (actor && isPetugasRole(actor.role) ? actor.id : undefined),
     });
 
-    const assigneeId =
+    let assigneeId =
       dto.assigneeId ??
       matchedAssignment?.userId ??
       (actor && isPetugasRole(actor.role) ? actor.id : null);
+
+    // Fallback: if no UserAssignment row exists yet, find an active user in the port matching preferred specialized roles
+    if (!assigneeId && this.prisma.user?.findFirst) {
+      const preferredRoles = this.getPreferredRolesForTask({
+        taskType: dto.taskType,
+        vesselCategory,
+        sourceType: dto.sourceType ?? null,
+      });
+      for (const role of preferredRoles) {
+        const directUser = await this.prisma.user.findFirst({
+          where: { portId: dto.portId, role, isActive: true },
+          select: { id: true },
+          orderBy: { id: 'asc' },
+        });
+        if (directUser) {
+          assigneeId = directUser.id;
+          break;
+        }
+      }
+    }
 
     const { templateId, checklistItems } = await this.buildChecklistItemsForTask(
       dto.taskType,
@@ -968,9 +1095,9 @@ export class TasksService {
     actor: AuthenticatedUser,
     scope: ScopeFilter,
   ) {
-    if (!isPetugasRole(actor.role)) {
+    if (!isPetugasRole(actor.role) && actor.role !== UserRole.BENDAHARA) {
       throw new ForbiddenException(
-        'Hanya Petugas Pelabuhan yang dapat mengisi checklist pelaksanaan pekerjaan.',
+        'Hanya Petugas Pelabuhan / Bendahara yang dapat mengisi checklist pelaksanaan pekerjaan.',
       );
     }
 
@@ -1007,7 +1134,7 @@ export class TasksService {
 
       const nextExecStatus =
         task.executionStatus === TaskExecutionStatus.NOT_STARTED ||
-        task.executionStatus === TaskExecutionStatus.OVERDUE
+          task.executionStatus === TaskExecutionStatus.OVERDUE
           ? TaskExecutionStatus.IN_PROGRESS
           : task.executionStatus;
 
@@ -1283,7 +1410,7 @@ export class TasksService {
         where: {
           ...portWhere,
           isActive: true,
-          role: { in: [UserRole.PETUGAS_PELABUHAN, UserRole.PETUGAS_DERMAGA] },
+          role: { in: ROLE_GROUPS.ALL_FIELD_OFFICERS },
         },
         select: { id: true, fullName: true, email: true, role: true, portId: true },
         orderBy: { fullName: 'asc' },

@@ -14,6 +14,7 @@ import {
   ZoneType,
 } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { ROLE_TAXONOMY_MAP } from '../../src/common/authz/role-taxonomy';
 import { DEFAULT_PERMISSION_CATALOG } from '../../src/modules/assignments/assignments.service';
 import { DEFAULT_SOP_CHECKLISTS } from '../../src/modules/tasks/tasks.service';
 
@@ -70,13 +71,42 @@ export async function seedHierarchyAssignmentsAndTasks(
     create: { divisionId: divAsdp.id, portId: ports.pomakoPenumpangId },
   });
 
-  // 2. Permissions Catalog
+  // 2. Permissions Catalog & RolePermission Matrix
+  const permissionIdMap = new Map<string, number>();
   for (const perm of DEFAULT_PERMISSION_CATALOG) {
-    await prisma.permission.upsert({
+    const savedPerm = await prisma.permission.upsert({
       where: { code: perm.code },
       update: { name: perm.name, module: perm.module },
       create: { code: perm.code, name: perm.name, module: perm.module },
     });
+    permissionIdMap.set(savedPerm.code, savedPerm.id);
+  }
+
+  for (const taxonomy of Object.values(ROLE_TAXONOMY_MAP)) {
+    for (const permCode of taxonomy.defaultPermissions) {
+      const savedPerm = await prisma.permission.upsert({
+        where: { code: permCode },
+        update: {},
+        create: {
+          code: permCode,
+          name: permCode.replace(/[:._]/g, ' ').toUpperCase(),
+          module: taxonomy.operationalDomain,
+        },
+      });
+      await prisma.rolePermission.upsert({
+        where: {
+          role_permissionId: {
+            role: taxonomy.role,
+            permissionId: savedPerm.id,
+          },
+        },
+        update: {},
+        create: {
+          role: taxonomy.role,
+          permissionId: savedPerm.id,
+        },
+      });
+    }
   }
 
   // 3. Terminals, Zones & Facilities for Pelabuhan Umum Poumako
@@ -274,6 +304,346 @@ export async function seedHierarchyAssignmentsAndTasks(
       fullName: 'Markus Karafir (Petugas Dermaga B)',
       role: UserRole.PETUGAS_PELABUHAN,
       portId: ports.pomakoId,
+    },
+  });
+
+  // 4B. 6 Specialized Port Officer Accounts (Separated by Functional Domain / Tupoksi)
+  const petugasRegistrasiKontrak = await prisma.user.upsert({
+    where: { email: 'petugas.registrasi@porta.mimikakab.go.id' },
+    update: {
+      fullName: 'Agustina Yoku, S.H. (Petugas Registrasi Perusahaan & Kontrak Payung)',
+      role: UserRole.PETUGAS_REGISTRASI_KONTRAK,
+      portId: ports.pomakoId,
+    },
+    create: {
+      email: 'petugas.registrasi@porta.mimikakab.go.id',
+      username: 'petugas.registrasi',
+      passwordHash,
+      fullName: 'Agustina Yoku, S.H. (Petugas Registrasi Perusahaan & Kontrak Payung)',
+      role: UserRole.PETUGAS_REGISTRASI_KONTRAK,
+      portId: ports.pomakoId,
+    },
+  });
+
+  const petugasDermagaBarang = await prisma.user.upsert({
+    where: { email: 'petugas.barang@porta.mimikakab.go.id' },
+    update: {
+      fullName: 'Barnabas Kapiyau (Petugas Dermaga Barang & Bongkar Muat)',
+      role: UserRole.PETUGAS_DERMAGA_BARANG,
+      portId: ports.pomakoId,
+    },
+    create: {
+      email: 'petugas.barang@porta.mimikakab.go.id',
+      username: 'petugas.barang',
+      passwordHash,
+      fullName: 'Barnabas Kapiyau (Petugas Dermaga Barang & Bongkar Muat)',
+      role: UserRole.PETUGAS_DERMAGA_BARANG,
+      portId: ports.pomakoId,
+    },
+  });
+
+  const petugasDermagaPenumpang = await prisma.user.upsert({
+    where: { email: 'petugas.penumpang@porta.mimikakab.go.id' },
+    update: {
+      fullName: 'Samuel Mote (Petugas Dermaga Penumpang, Manifes SOLAS & Gate)',
+      role: UserRole.PETUGAS_DERMAGA_PENUMPANG,
+      portId: ports.pomakoId,
+    },
+    create: {
+      email: 'petugas.penumpang@porta.mimikakab.go.id',
+      username: 'petugas.penumpang',
+      passwordHash,
+      fullName: 'Samuel Mote (Petugas Dermaga Penumpang, Manifes SOLAS & Gate)',
+      role: UserRole.PETUGAS_DERMAGA_PENUMPANG,
+      portId: ports.pomakoId,
+    },
+  });
+
+  const petugasRuangan = await prisma.user.upsert({
+    where: { email: 'petugas.ruangan@porta.mimikakab.go.id' },
+    update: {
+      fullName: 'Ester Pigai, S.T. (Petugas Katalog Ruangan, Aset & Pemeliharaan)',
+      role: UserRole.PETUGAS_RUANGAN,
+      portId: ports.pomakoId,
+    },
+    create: {
+      email: 'petugas.ruangan@porta.mimikakab.go.id',
+      username: 'petugas.ruangan',
+      passwordHash,
+      fullName: 'Ester Pigai, S.T. (Petugas Katalog Ruangan, Aset & Pemeliharaan)',
+      role: UserRole.PETUGAS_RUANGAN,
+      portId: ports.pomakoId,
+    },
+  });
+
+  const petugasTagihan = await prisma.user.upsert({
+    where: { email: 'petugas.tagihan@porta.mimikakab.go.id' },
+    update: {
+      fullName: 'Hendrikus Rumbiak, S.E. (Petugas Tagihan e-SKRD, Keberatan & Denda Teguran)',
+      role: UserRole.PETUGAS_TAGIHAN,
+      portId: ports.pomakoId,
+    },
+    create: {
+      email: 'petugas.tagihan@porta.mimikakab.go.id',
+      username: 'petugas.tagihan',
+      passwordHash,
+      fullName: 'Hendrikus Rumbiak, S.E. (Petugas Tagihan e-SKRD, Keberatan & Denda Teguran)',
+      role: UserRole.PETUGAS_TAGIHAN,
+      portId: ports.pomakoId,
+    },
+  });
+
+  // Active UserAssignments for Specialized Officer Roles
+  await prisma.userAssignment.upsert({
+    where: { assignmentCode: 'ASG-PMK-SPEC-REG-01' },
+    update: {
+      userId: petugasRegistrasiKontrak.id,
+      role: UserRole.PETUGAS_REGISTRASI_KONTRAK,
+      portId: ports.pomakoId,
+      taskTypes: [
+        TaskType.COMPANY_REGISTRATION_CHECK,
+        TaskType.DOCUMENT_VERIFICATION,
+      ],
+      permissionCodes: [
+        'company.register',
+        'document.upload',
+        'document.verify.initial',
+        'task.execute',
+        'task.submit',
+      ],
+      status: AssignmentStatus.ACTIVE,
+      assignedById: kepalaPelabuhanPmK.id,
+    },
+    create: {
+      assignmentCode: 'ASG-PMK-SPEC-REG-01',
+      userId: petugasRegistrasiKontrak.id,
+      role: UserRole.PETUGAS_REGISTRASI_KONTRAK,
+      portId: ports.pomakoId,
+      taskTypes: [
+        TaskType.COMPANY_REGISTRATION_CHECK,
+        TaskType.DOCUMENT_VERIFICATION,
+      ],
+      permissionCodes: [
+        'company.register',
+        'document.upload',
+        'document.verify.initial',
+        'task.execute',
+        'task.submit',
+      ],
+      startDate: new Date('2026-01-01T00:00:00Z'),
+      status: AssignmentStatus.ACTIVE,
+      assignedById: kepalaPelabuhanPmK.id,
+      notes: 'Penugasan Spesialis Verifikasi Pendaftaran Perusahaan, Kapal & Kontrak PKS Sandar',
+    },
+  });
+
+  await prisma.userAssignment.upsert({
+    where: { assignmentCode: 'ASG-PMK-SPEC-BRG-01' },
+    update: {
+      userId: petugasDermagaBarang.id,
+      role: UserRole.PETUGAS_DERMAGA_BARANG,
+      portId: ports.pomakoId,
+      terminalId: termMultipurpose.id,
+      berthId: dermagaB?.id ?? null,
+      taskTypes: [
+        TaskType.VESSEL_ARRIVAL_CHECK,
+        TaskType.BERTHING_INSPECTION,
+        TaskType.CARGO_HANDLING_CHECK,
+        TaskType.MANIFEST_CHECK,
+        TaskType.VESSEL_DEPARTURE_CLEARANCE,
+      ],
+      permissionCodes: [
+        'vessel.arrival.create',
+        'vessel.berthing.create',
+        'vessel.berthing.update',
+        'vessel.departure.update',
+        'cargo.create',
+        'cargo.update',
+        'equipment.create',
+        'task.execute',
+        'task.submit',
+      ],
+      status: AssignmentStatus.ACTIVE,
+      assignedById: kepalaPelabuhanPmK.id,
+    },
+    create: {
+      assignmentCode: 'ASG-PMK-SPEC-BRG-01',
+      userId: petugasDermagaBarang.id,
+      role: UserRole.PETUGAS_DERMAGA_BARANG,
+      portId: ports.pomakoId,
+      terminalId: termMultipurpose.id,
+      berthId: dermagaB?.id ?? null,
+      taskTypes: [
+        TaskType.VESSEL_ARRIVAL_CHECK,
+        TaskType.BERTHING_INSPECTION,
+        TaskType.CARGO_HANDLING_CHECK,
+        TaskType.MANIFEST_CHECK,
+        TaskType.VESSEL_DEPARTURE_CLEARANCE,
+      ],
+      permissionCodes: [
+        'vessel.arrival.create',
+        'vessel.berthing.create',
+        'vessel.berthing.update',
+        'vessel.departure.update',
+        'cargo.create',
+        'cargo.update',
+        'equipment.create',
+        'task.execute',
+        'task.submit',
+      ],
+      startDate: new Date('2026-01-01T00:00:00Z'),
+      status: AssignmentStatus.ACTIVE,
+      assignedById: kepalaPelabuhanPmK.id,
+      notes: 'Penugasan Spesialis Operasional Dermaga Barang, Bongkar Muat & Alat Berat',
+    },
+  });
+
+  await prisma.userAssignment.upsert({
+    where: { assignmentCode: 'ASG-PMK-SPEC-PNP-01' },
+    update: {
+      userId: petugasDermagaPenumpang.id,
+      role: UserRole.PETUGAS_DERMAGA_PENUMPANG,
+      portId: ports.pomakoId,
+      terminalId: termMultipurpose.id,
+      berthId: dermagaA?.id ?? null,
+      taskTypes: [
+        TaskType.VESSEL_ARRIVAL_CHECK,
+        TaskType.BERTHING_INSPECTION,
+        TaskType.PASSENGER_SERVICE,
+        TaskType.MANIFEST_CHECK,
+        TaskType.VESSEL_DEPARTURE_CLEARANCE,
+      ],
+      permissionCodes: [
+        'vessel.arrival.create',
+        'vessel.berthing.create',
+        'vessel.berthing.update',
+        'vessel.departure.update',
+        'passenger.service.create',
+        'passenger.service.update',
+        'manifest.create',
+        'manifest.update',
+        'manifest.submit',
+        'gate.ticketing.manage',
+        'task.execute',
+        'task.submit',
+      ],
+      status: AssignmentStatus.ACTIVE,
+      assignedById: kepalaPelabuhanPmK.id,
+    },
+    create: {
+      assignmentCode: 'ASG-PMK-SPEC-PNP-01',
+      userId: petugasDermagaPenumpang.id,
+      role: UserRole.PETUGAS_DERMAGA_PENUMPANG,
+      portId: ports.pomakoId,
+      terminalId: termMultipurpose.id,
+      berthId: dermagaA?.id ?? null,
+      taskTypes: [
+        TaskType.VESSEL_ARRIVAL_CHECK,
+        TaskType.BERTHING_INSPECTION,
+        TaskType.PASSENGER_SERVICE,
+        TaskType.MANIFEST_CHECK,
+        TaskType.VESSEL_DEPARTURE_CLEARANCE,
+      ],
+      permissionCodes: [
+        'vessel.arrival.create',
+        'vessel.berthing.create',
+        'vessel.berthing.update',
+        'vessel.departure.update',
+        'passenger.service.create',
+        'passenger.service.update',
+        'manifest.create',
+        'manifest.update',
+        'manifest.submit',
+        'gate.ticketing.manage',
+        'task.execute',
+        'task.submit',
+      ],
+      startDate: new Date('2026-01-01T00:00:00Z'),
+      status: AssignmentStatus.ACTIVE,
+      assignedById: kepalaPelabuhanPmK.id,
+      notes: 'Penugasan Spesialis Operasional Dermaga Penumpang, Manifes SOLAS & Gate Ticketing',
+    },
+  });
+
+  await prisma.userAssignment.upsert({
+    where: { assignmentCode: 'ASG-PMK-SPEC-RNG-01' },
+    update: {
+      userId: petugasRuangan.id,
+      role: UserRole.PETUGAS_RUANGAN,
+      portId: ports.pomakoId,
+      taskTypes: [
+        TaskType.ASSET_MANAGEMENT_CHECK,
+        TaskType.FACILITY_INSPECTION,
+        TaskType.MAINTENANCE_HANDLING,
+      ],
+      permissionCodes: [
+        'asset.manage',
+        'facility.inspect',
+        'utility.create',
+        'maintenance.create',
+        'maintenance.update',
+        'task.execute',
+        'task.submit',
+      ],
+      status: AssignmentStatus.ACTIVE,
+      assignedById: kepalaPelabuhanPmK.id,
+    },
+    create: {
+      assignmentCode: 'ASG-PMK-SPEC-RNG-01',
+      userId: petugasRuangan.id,
+      role: UserRole.PETUGAS_RUANGAN,
+      portId: ports.pomakoId,
+      taskTypes: [
+        TaskType.ASSET_MANAGEMENT_CHECK,
+        TaskType.FACILITY_INSPECTION,
+        TaskType.MAINTENANCE_HANDLING,
+      ],
+      permissionCodes: [
+        'asset.manage',
+        'facility.inspect',
+        'utility.create',
+        'maintenance.create',
+        'maintenance.update',
+        'task.execute',
+        'task.submit',
+      ],
+      startDate: new Date('2026-01-01T00:00:00Z'),
+      status: AssignmentStatus.ACTIVE,
+      assignedById: kepalaPelabuhanPmK.id,
+      notes: 'Penugasan Spesialis Katalog Ruangan, Kelayakan Sewa, Utilitas & Pemeliharaan Aset',
+    },
+  });
+
+  await prisma.userAssignment.upsert({
+    where: { assignmentCode: 'ASG-PMK-SPEC-TGH-01' },
+    update: {
+      userId: petugasTagihan.id,
+      role: UserRole.PETUGAS_TAGIHAN,
+      portId: ports.pomakoId,
+      taskTypes: [TaskType.RETRIBUTION_COLLECTION],
+      permissionCodes: [
+        'retribution.record',
+        'task.execute',
+        'task.submit',
+      ],
+      status: AssignmentStatus.ACTIVE,
+      assignedById: kepalaPelabuhanPmK.id,
+    },
+    create: {
+      assignmentCode: 'ASG-PMK-SPEC-TGH-01',
+      userId: petugasTagihan.id,
+      role: UserRole.PETUGAS_TAGIHAN,
+      portId: ports.pomakoId,
+      taskTypes: [TaskType.RETRIBUTION_COLLECTION],
+      permissionCodes: [
+        'retribution.record',
+        'task.execute',
+        'task.submit',
+      ],
+      startDate: new Date('2026-01-01T00:00:00Z'),
+      status: AssignmentStatus.ACTIVE,
+      assignedById: kepalaPelabuhanPmK.id,
+      notes: 'Penugasan Spesialis Penagihan e-SKRD, Keringanan Perbup 25/2024 & Surat Teguran Denda',
     },
   });
 

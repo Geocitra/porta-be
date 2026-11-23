@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { ROLE_GROUPS } from '../../common/authz/role-taxonomy';
 import {
   AuthenticatedUser,
   isPetugasRole,
@@ -54,9 +55,8 @@ const USER_PUBLIC_SELECT = {
 
 const PORT_BOUND_ROLES: UserRole[] = [
   UserRole.KEPALA_PELABUHAN,
-  UserRole.PETUGAS_PELABUHAN,
-  UserRole.PETUGAS_DERMAGA,
-  UserRole.BENDAHARA,
+  UserRole.ADMIN_PELABUHAN,
+  ...ROLE_GROUPS.ALL_FIELD_OFFICERS,
 ];
 
 @Injectable()

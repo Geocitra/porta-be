@@ -55,10 +55,6 @@ export class CargoUtilityService {
     });
   }
 
-  async listCargoRecords(scope: ScopeFilter) {
-    return this.listCargo(scope);
-  }
-
   async listEquipment(scope: ScopeFilter) {
     return this.prisma.equipmentRentalRecord.findMany({
       where: {
@@ -73,10 +69,6 @@ export class CargoUtilityService {
       },
       orderBy: { createdAt: 'desc' },
     });
-  }
-
-  async listEquipmentRentals(scope: ScopeFilter) {
-    return this.listEquipment(scope);
   }
 
   async listUtilities(scope: ScopeFilter) {

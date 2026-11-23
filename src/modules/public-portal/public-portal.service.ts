@@ -171,6 +171,9 @@ export class PublicPortalService {
     return this.prisma.complaint.findMany({
       where: {
         ...(scope.portId ? { portId: scope.portId } : {}),
+        ...(scope.allowedPortIds && !scope.portId
+          ? { portId: { in: scope.allowedPortIds } }
+          : {}),
       },
       include: { port: { select: { id: true, code: true, name: true } } },
       orderBy: { createdAt: 'desc' },

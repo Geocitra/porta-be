@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
+import { ROLE_GROUPS } from '../../common/authz/role-taxonomy';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -71,9 +72,8 @@ export class PublicPortalController {
     UserRole.OPERATOR_KAPAL,
     UserRole.SUPERADMIN,
     UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.PETUGAS_RUANGAN,
+    UserRole.KEPALA_PELABUHAN,
+    ...ROLE_GROUPS.ALL_FIELD_OFFICERS,
   )
   @Get('complaints/my')
   findMyComplaints(@CurrentUser() user: AuthenticatedUser) {
@@ -92,9 +92,7 @@ export class PublicPortalController {
     UserRole.KEPALA_BIDANG,
     UserRole.KEPALA_PELABUHAN,
     UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.PETUGAS_RUANGAN,
+    ...ROLE_GROUPS.ALL_FIELD_OFFICERS,
     UserRole.DISHUB_EKSEKUTIF,
   )
   @Get('complaints')
@@ -107,9 +105,7 @@ export class PublicPortalController {
   @Roles(
     UserRole.KEPALA_PELABUHAN,
     UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.PETUGAS_RUANGAN,
+    ...ROLE_GROUPS.ALL_FIELD_OFFICERS,
   )
   @Patch('complaints/:id/resolve')
   resolveComplaint(

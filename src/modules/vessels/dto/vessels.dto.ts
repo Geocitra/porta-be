@@ -270,6 +270,18 @@ export class CreateBerthingContractDto {
   dockAllocation?: string;
 }
 
+export class ReviewBerthingContractDto {
+  @ApiProperty({ enum: ['APPROVE', 'REJECT'], example: 'APPROVE' })
+  @IsString()
+  @IsNotEmpty()
+  decision!: 'APPROVE' | 'REJECT';
+
+  @ApiPropertyOptional({ example: 'Dokumen legalitas SIUPAL, Surat Ukur & Kuota sesuai prasyarat.' })
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
 export class VerifyBerthingContractDto {
   @ApiProperty({ enum: [ContractStatus.ACTIVE, ContractStatus.REJECTED] })
   @IsEnum(ContractStatus)

@@ -14,6 +14,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
+import { ROLE_GROUPS } from '../../common/authz/role-taxonomy';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -45,11 +46,9 @@ export class AssetsLeasesController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
-    UserRole.KEPALA_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.PETUGAS_RUANGAN,
+    ...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS,
+    ...ROLE_GROUPS.ROOM_ASSET_OFFICERS,
+    UserRole.PETUGAS_TAGIHAN,
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
   )
@@ -59,19 +58,15 @@ export class AssetsLeasesController {
 
   @Post('tenants')
   @Roles(
-    UserRole.SUPERADMIN,
-    UserRole.KEPALA_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.PETUGAS_RUANGAN,
+    ...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS,
+    ...ROLE_GROUPS.ROOM_ASSET_OFFICERS,
   )
   createMasterTenant(@Body() dto: CreateMasterTenantDto) {
     return this.assetsLeasesService.createMasterTenant(dto);
   }
 
   @Patch('tenants/:id')
-  @Roles(UserRole.SUPERADMIN, UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN)
+  @Roles(...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS, ...ROLE_GROUPS.ROOM_ASSET_OFFICERS)
   updateMasterTenant(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateMasterTenantDto,
@@ -98,7 +93,7 @@ export class AssetsLeasesController {
   }
 
   @Patch('tenants/:id/verify')
-  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN)
+  @Roles(...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS)
   verifyTenant(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: VerifyTenantDto,
@@ -113,7 +108,7 @@ export class AssetsLeasesController {
   }
 
   @Post('assets')
-  @Roles(UserRole.SUPERADMIN, UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.SUPERADMIN, ...ROLE_GROUPS.ROOM_ASSET_OFFICERS)
   createAsset(
     @Body() dto: CreatePortAssetDto,
     @CurrentUser() actor: AuthenticatedUser,
@@ -123,7 +118,7 @@ export class AssetsLeasesController {
   }
 
   @Patch('assets/:id')
-  @Roles(UserRole.SUPERADMIN, UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.SUPERADMIN, ...ROLE_GROUPS.ROOM_ASSET_OFFICERS)
   updateAsset(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdatePortAssetDto,
@@ -138,12 +133,8 @@ export class AssetsLeasesController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
-    UserRole.KEPALA_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.PETUGAS_RUANGAN,
-    UserRole.BENDAHARA,
+    ...ROLE_GROUPS.ROOM_ASSET_OFFICERS,
+    ...ROLE_GROUPS.BILLING_WARNING_OFFICERS,
     UserRole.DISHUB_EKSEKUTIF,
     UserRole.TENANT,
     UserRole.OPERATOR_KAPAL,
@@ -163,7 +154,7 @@ export class AssetsLeasesController {
   }
 
   @Post('leases')
-  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN)
+  @Roles(...ROLE_GROUPS.ROOM_ASSET_OFFICERS)
   createLease(
     @Body() dto: CreateAssetLeaseDto,
     @CurrentUser() actor: AuthenticatedUser,
@@ -173,12 +164,7 @@ export class AssetsLeasesController {
   }
 
   @Patch('leases/:id/verify-room')
-  @Roles(
-    UserRole.PETUGAS_RUANGAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.KEPALA_PELABUHAN,
-  )
+  @Roles(...ROLE_GROUPS.ROOM_ASSET_OFFICERS)
   verifyRoom(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() actor: AuthenticatedUser,
@@ -198,12 +184,7 @@ export class AssetsLeasesController {
   }
 
   @Patch('leases/:id/reject')
-  @Roles(
-    UserRole.PETUGAS_RUANGAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.KEPALA_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
-  )
+  @Roles(...ROLE_GROUPS.ROOM_ASSET_OFFICERS)
   rejectLease(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RejectAssetLeaseDto,
@@ -214,7 +195,7 @@ export class AssetsLeasesController {
   }
 
   @Post('leases/:id/payments')
-  @Roles(UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
+  @Roles(...ROLE_GROUPS.BILLING_WARNING_OFFICERS)
   recordLeasePayment(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RecordLeasePaymentDto,
@@ -229,11 +210,8 @@ export class AssetsLeasesController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
-    UserRole.KEPALA_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.BENDAHARA,
-    UserRole.PETUGAS_RUANGAN,
-    UserRole.PETUGAS_PELABUHAN,
+    ...ROLE_GROUPS.ROOM_ASSET_OFFICERS,
+    ...ROLE_GROUPS.BILLING_WARNING_OFFICERS,
     UserRole.TENANT,
     UserRole.OPERATOR_KAPAL,
   )

@@ -14,6 +14,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
+import { ROLE_GROUPS } from '../../common/authz/role-taxonomy';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -37,10 +38,8 @@ export class MaintenanceController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
-    UserRole.KEPALA_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
+    ...ROLE_GROUPS.ROOM_ASSET_OFFICERS,
+    ...ROLE_GROUPS.ALL_BERTH_OFFICERS,
     UserRole.DISHUB_EKSEKUTIF,
   )
   findAll(@Req() req: { portScope: ScopeFilter }) {
@@ -49,10 +48,8 @@ export class MaintenanceController {
 
   @Post()
   @Roles(
-    UserRole.KEPALA_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
+    ...ROLE_GROUPS.ROOM_ASSET_OFFICERS,
+    ...ROLE_GROUPS.ALL_BERTH_OFFICERS,
   )
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('evidenceFile'))
@@ -66,12 +63,7 @@ export class MaintenanceController {
   }
 
   @Patch(':id/status')
-  @Roles(
-    UserRole.KEPALA_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-  )
+  @Roles(...ROLE_GROUPS.ROOM_ASSET_OFFICERS)
   updateStatus(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateMaintenanceStatusDto,

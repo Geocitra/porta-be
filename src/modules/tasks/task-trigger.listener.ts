@@ -9,9 +9,17 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import {
+  ASSET_LEASE_REQUESTED_EVENT,
+  AssetLeaseRequestedEvent,
+} from '../assets-leases/assets-leases.service';
+import {
   COMPANY_ONBOARDED_EVENT,
   CompanyOnboardedEvent,
 } from '../auth/auth.service';
+import {
+  INVOICE_ISSUED_EVENT,
+  InvoiceIssuedEvent,
+} from '../billing/billing.service';
 import {
   CARGO_RECORD_CREATED_EVENT,
   CargoRecordCreatedEvent,
@@ -27,8 +35,12 @@ import {
   MaintenanceReportedEvent,
 } from '../maintenance/maintenance.service';
 import {
+  BERTHING_CONTRACT_SUBMITTED_EVENT,
+  BerthingContractEvent,
   DOCUMENT_UPLOADED_EVENT,
   DocumentUploadedEvent,
+  VESSEL_REVERIFICATION_REQUIRED_EVENT,
+  VesselReverificationRequiredEvent,
 } from '../vessels/vessels.service';
 import {
   BERTHING_STARTED_EVENT,
@@ -295,6 +307,82 @@ export class TaskTriggerListener {
       priority: TaskPriority.MEDIUM,
       obligationDate: now.toISOString().slice(0, 10),
       dueDate: due.toISOString(),
+    });
+  }
+
+  @OnEvent(VESSEL_REVERIFICATION_REQUIRED_EVENT)
+  async handleVesselReverificationRequired(
+    event: VesselReverificationRequiredEvent,
+  ): Promise<void> {
+    const defaultPort = await this.prisma.port.findFirst({
+      where: { isActive: true },
+      orderBy: { id: 'asc' },
+    });
+    if (!defaultPort) return;
+
+    const now = new Date();
+    const due = new Date(now.getTime() + 12 * 60 * 60 * 1000);
+    await this.tasksService.createTask({
+      taskType: TaskType.DOCUMENT_VERIFICATION,
+      title: `Verifikasi Ulang Spesifikasi Kapal ${event.vesselName} (#${event.vesselId})`,
+      description: `Operator mengubah data teknis kapal (${event.changedFields.join(', ')}). Periksa kesesuaian dengan Surat Ukur resmi.`,
+      sourceType: TaskSourceType.DOCUMENT_SUBMISSION,
+      sourceId: `VESSEL-REVERIFY-${event.vesselId}-${now.getTime()}`,
+      portId: defaultPort.id,
+      priority: TaskPriority.HIGH,
+      obligationDate: now.toISOString().slice(0, 10),
+      dueDate: due.toISOString(),
+    });
+  }
+
+  @OnEvent(BERTHING_CONTRACT_SUBMITTED_EVENT)
+  async handleBerthingContractSubmitted(event: BerthingContractEvent): Promise<void> {
+    const now = new Date();
+    const due = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    await this.tasksService.createTask({
+      taskType: TaskType.DOCUMENT_VERIFICATION,
+      title: `Pemeriksaan Prasyarat Kontrak PKS Sandar: ${event.title} (${event.contractNumber})`,
+      description: `Periksa kelengkapan dokumen legalitas perusahaan, daftar armada, dan kuota sandar bulanan pada pengajuan Kontrak PKS Sandar ${event.contractNumber}.`,
+      sourceType: TaskSourceType.DOCUMENT_SUBMISSION,
+      sourceId: `BERTHING-CONTRACT-${event.contractId}`,
+      portId: event.portId,
+      priority: TaskPriority.HIGH,
+      obligationDate: now.toISOString().slice(0, 10),
+      dueDate: due.toISOString(),
+    });
+  }
+
+  @OnEvent(ASSET_LEASE_REQUESTED_EVENT)
+  async handleAssetLeaseRequested(event: AssetLeaseRequestedEvent): Promise<void> {
+    const now = new Date();
+    const due = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    await this.tasksService.createTask({
+      taskType: TaskType.ASSET_MANAGEMENT_CHECK,
+      title: `Verifikasi Kelayakan Ruangan/Aset: ${event.assetName} (${event.contractNumber})`,
+      description: `Periksa kelayakan fisik ruangan/aset ${event.assetName} dan profil pemohon sewa (${event.tenantName}).`,
+      sourceType: TaskSourceType.ASSET_LEASE,
+      sourceId: String(event.leaseId),
+      portId: event.portId,
+      priority: TaskPriority.MEDIUM,
+      obligationDate: now.toISOString().slice(0, 10),
+      dueDate: due.toISOString(),
+    });
+  }
+
+  @OnEvent(INVOICE_ISSUED_EVENT)
+  async handleInvoiceIssued(event: InvoiceIssuedEvent): Promise<void> {
+    const now = new Date();
+    await this.tasksService.createTask({
+      taskType: TaskType.RETRIBUTION_COLLECTION,
+      title: `Penagihan & Monitoring e-SKRD (${event.invoiceNumber})`,
+      description: `Awasi pelunasan tagihan retribusi ${event.invoiceNumber} sebesar Rp ${event.totalAmountIdr.toLocaleString('id-ID')} sebelum jatuh tempo.`,
+      sourceType: TaskSourceType.BILLING_INVOICE,
+      sourceId: String(event.invoiceId),
+      portId: event.portId,
+      visitId: event.visitId,
+      priority: TaskPriority.MEDIUM,
+      obligationDate: now.toISOString().slice(0, 10),
+      dueDate: event.dueDate.toISOString(),
     });
   }
 }

@@ -22,6 +22,7 @@ import {
   TaskType,
   UserRole,
 } from '@prisma/client';
+import { ROLE_GROUPS } from '../../common/authz/role-taxonomy';
 import {
   AuthenticatedUser,
   CurrentUser,
@@ -74,8 +75,7 @@ export class TasksController {
     UserRole.KEPALA_BIDANG,
     UserRole.KEPALA_PELABUHAN,
     UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
+    ...ROLE_GROUPS.ALL_FIELD_OFFICERS,
     UserRole.DISHUB_EKSEKUTIF,
   )
   @ApiQuery({ name: 'portId', required: false, type: Number })
@@ -136,8 +136,7 @@ export class TasksController {
     UserRole.KEPALA_BIDANG,
     UserRole.KEPALA_PELABUHAN,
     UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
+    ...ROLE_GROUPS.ALL_FIELD_OFFICERS,
     UserRole.DISHUB_EKSEKUTIF,
   )
   findById(
@@ -152,8 +151,7 @@ export class TasksController {
   @Roles(
     UserRole.KEPALA_PELABUHAN,
     UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
+    ...ROLE_GROUPS.ALL_FIELD_OFFICERS,
   )
   createTask(
     @Body() dto: CreateTaskDto,
@@ -164,7 +162,7 @@ export class TasksController {
   }
 
   @Patch(':id/start')
-  @Roles(UserRole.PETUGAS_PELABUHAN, UserRole.PETUGAS_DERMAGA)
+  @Roles(...ROLE_GROUPS.ALL_FIELD_OFFICERS)
   startTask(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() actor: AuthenticatedUser,
@@ -174,7 +172,7 @@ export class TasksController {
   }
 
   @Patch(':id/checklist')
-  @Roles(UserRole.PETUGAS_PELABUHAN, UserRole.PETUGAS_DERMAGA)
+  @Roles(...ROLE_GROUPS.ALL_FIELD_OFFICERS)
   updateChecklist(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateOfficerTaskChecklistDto,
@@ -185,7 +183,7 @@ export class TasksController {
   }
 
   @Post(':id/attachments')
-  @Roles(UserRole.PETUGAS_PELABUHAN, UserRole.PETUGAS_DERMAGA, UserRole.ADMIN_PELABUHAN)
+  @Roles(...ROLE_GROUPS.ALL_FIELD_OFFICERS, UserRole.ADMIN_PELABUHAN)
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   uploadAttachment(
@@ -199,7 +197,7 @@ export class TasksController {
   }
 
   @Post(':id/submit')
-  @Roles(UserRole.PETUGAS_PELABUHAN, UserRole.PETUGAS_DERMAGA)
+  @Roles(...ROLE_GROUPS.ALL_FIELD_OFFICERS)
   submitTask(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: SubmitTaskDto,
@@ -218,7 +216,7 @@ export class TaskSubmissionsController {
   constructor(private readonly tasksService: TasksService) {}
 
   @Post()
-  @Roles(UserRole.PETUGAS_PELABUHAN, UserRole.PETUGAS_DERMAGA)
+  @Roles(...ROLE_GROUPS.ALL_FIELD_OFFICERS)
   createSubmission(
     @Body() dto: SubmitTaskDto,
     @CurrentUser() actor: AuthenticatedUser,

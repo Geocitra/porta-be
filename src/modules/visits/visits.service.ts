@@ -10,12 +10,14 @@ import {
   ActivityMode,
   BerthApprovalStatus,
   BerthCategory,
+  BerthServiceCategory,
   BerthValidationResult,
   BillingEligibility,
   BillingStage,
   ContractStatus,
   InvoiceStatus,
   ServiceCode,
+  UserRole,
   VerificationStatus,
   VesselCategory,
   VisitActivityMode,
@@ -213,15 +215,17 @@ export class VisitsService {
       throw new ForbiddenException('Cannot create visit for another operator vessel');
     }
 
+    let activeContractId: number | null = null;
+
     if (dto.visitOrigin === VisitOrigin.OPERATOR_REQUEST) {
       if (vessel.operator.verificationStatus !== VerificationStatus.VERIFIED) {
         throw new ForbiddenException(
-          `Operator "${vessel.operator.name}" belum diverifikasi oleh Admin Pelabuhan`,
+          `Operator "${vessel.operator.name}" belum diverifikasi oleh Petugas Registrasi / Admin Pelabuhan`,
         );
       }
       if (vessel.verificationStatus !== VerificationStatus.VERIFIED) {
         throw new ForbiddenException(
-          `Kapal "${vessel.name}" belum diverifikasi (Surat Ukur/GT) oleh Admin Pelabuhan`,
+          `Kapal "${vessel.name}" belum diverifikasi (Surat Ukur/GT) oleh Petugas Registrasi / Admin Pelabuhan`,
         );
       }
 
@@ -235,6 +239,7 @@ export class VisitsService {
           startDate: { lte: now },
           endDate: { gte: now },
         },
+        orderBy: { createdAt: 'desc' },
       });
 
       if (!activeContract) {
@@ -242,6 +247,17 @@ export class VisitsService {
           `Operator "${vessel.operator.name}" belum memiliki Perjanjian Kerja Sama (PKS Sandar Kapal) yang AKTIF dan disahkan Kepala Pelabuhan untuk pelabuhan ini. Pengajuan warta sandar ditolak sampai PKS Sandar disetujui.`,
         );
       }
+
+      if (
+        activeContract.monthlyQuota > 0 &&
+        activeContract.usedQuota >= activeContract.monthlyQuota
+      ) {
+        throw new ForbiddenException(
+          `Kuota sandar bulanan pada Kontrak PKS "${activeContract.contractNumber}" telah habis (${activeContract.usedQuota}/${activeContract.monthlyQuota} kunjungan). Silakan ajukan pembaruan kuota kontrak atau kunjungan insidental melalui petugas.`,
+        );
+      }
+
+      activeContractId = activeContract.id;
     }
 
     // Early tariff resolution check: skip for transit-only vessels
@@ -274,12 +290,20 @@ export class VisitsService {
     const visitNumber = DocNumberUtil.generate('VST', dto.portId);
 
     const created = await this.prisma.$transaction(async (tx) => {
+      if (activeContractId !== null) {
+        await tx.operatorBerthingContract.update({
+          where: { id: activeContractId },
+          data: { usedQuota: { increment: 1 } },
+        });
+      }
+
       const visit = await tx.shipVisit.create({
         data: {
           visitNumber,
           portId: dto.portId,
           vesselId: vessel.id,
           operatorId: vessel.operatorId,
+          berthingContractId: activeContractId,
           visitOrigin: dto.visitOrigin,
           activityMode: dto.activityMode,
           isTransitOnly: dto.isTransitOnly ?? false,
@@ -438,6 +462,24 @@ export class VisitsService {
     }
     if (berth.portId !== visit.portId) {
       throw new BadRequestException('Berth does not belong to the same port as the visit');
+    }
+
+    // Enforce specialized berth officer jurisdiction by BerthServiceCategory
+    if (
+      user.role === UserRole.PETUGAS_DERMAGA_BARANG &&
+      berth.berthServiceCategory === BerthServiceCategory.DERMAGA_PENUMPANG
+    ) {
+      throw new ForbiddenException(
+        `Petugas Dermaga Barang tidak berwenang mengoperasikan Dermaga Khusus Penumpang (${berth.name})`,
+      );
+    }
+    if (
+      user.role === UserRole.PETUGAS_DERMAGA_PENUMPANG &&
+      berth.berthServiceCategory === BerthServiceCategory.DERMAGA_BARANG
+    ) {
+      throw new ForbiddenException(
+        `Petugas Dermaga Penumpang tidak berwenang mengoperasikan Dermaga Khusus Barang (${berth.name})`,
+      );
     }
 
     // Ensure no open or pending-approval berthing record already exists for this visit

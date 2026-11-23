@@ -41,8 +41,8 @@ export class PaymentsController {
   @Roles(
     UserRole.OPERATOR_KAPAL,
     UserRole.TENANT,
-    UserRole.SUPERADMIN,
     UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_TAGIHAN,
     UserRole.BENDAHARA,
   )
   @Post('checkout')

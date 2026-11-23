@@ -19,7 +19,11 @@ enum UserRole {
   ADMIN_PELABUHAN
   PETUGAS_PELABUHAN
   PETUGAS_DERMAGA
+  PETUGAS_REGISTRASI_KONTRAK
+  PETUGAS_DERMAGA_BARANG
+  PETUGAS_DERMAGA_PENUMPANG
   PETUGAS_RUANGAN
+  PETUGAS_TAGIHAN
   BENDAHARA
   OPERATOR_KAPAL
   TENANT
@@ -255,6 +259,7 @@ enum LeaseStatus {
 
 enum ContractStatus {
   PENDING_VERIFICATION
+  PENDING_HEAD_OF_PORT
   ACTIVE
   REJECTED
   EXPIRED
@@ -534,6 +539,7 @@ model User {
   verifiedLeasePays  AssetLeasePayment[]   @relation("LeasePaymentVerifier")
   verifiedRoomLeases AssetLease[]          @relation("LeaseRoomVerifiedBy")
   verifiedHeadLeases AssetLease[]          @relation("LeaseHeadVerifiedBy")
+  reviewedBerthingContracts OperatorBerthingContract[] @relation("BerthingContractReviewedBy")
   verifiedBerthingContracts OperatorBerthingContract[] @relation("BerthingContractVerifiedBy")
   reportedMaint      MaintenanceTicket[]   @relation("MaintenanceReporter")
   recordedCargos     CargoHandlingRecord[] @relation("CargoRecorder")
@@ -744,28 +750,30 @@ model PortTariff {
 // ============================================================================
 
 model ShipVisit {
-  id              Int               @id @default(autoincrement())
-  visitNumber     String            @unique @map("visit_number") @db.VarChar(50)
-  portId          Int               @map("port_id")
-  vesselId        Int               @map("vessel_id")
-  operatorId      Int               @map("operator_id")
-  visitOrigin     VisitOrigin       @default(OPERATOR_REQUEST) @map("visit_origin")
-  activityMode    VisitActivityMode @default(NORMAL) @map("activity_mode")
-  isTransitOnly   Boolean           @default(false) @map("is_transit_only")
-  originPort      String?           @map("origin_port") @db.VarChar(150)
-  destinationPort String?           @map("destination_port") @db.VarChar(150)
-  eta             DateTime
-  etd             DateTime
-  ataAnchorage    DateTime?         @map("ata_anchorage")
-  atdPort         DateTime?         @map("atd_port")
-  status          VisitStatus       @default(REQUESTED)
-  notes           String?           @db.Text
-  createdAt       DateTime          @default(now()) @map("created_at")
-  updatedAt       DateTime          @updatedAt @map("updated_at")
+  id                 Int               @id @default(autoincrement())
+  visitNumber        String            @unique @map("visit_number") @db.VarChar(50)
+  portId             Int               @map("port_id")
+  vesselId           Int               @map("vessel_id")
+  operatorId         Int               @map("operator_id")
+  berthingContractId Int?              @map("berthing_contract_id")
+  visitOrigin        VisitOrigin       @default(OPERATOR_REQUEST) @map("visit_origin")
+  activityMode       VisitActivityMode @default(NORMAL) @map("activity_mode")
+  isTransitOnly      Boolean           @default(false) @map("is_transit_only")
+  originPort         String?           @map("origin_port") @db.VarChar(150)
+  destinationPort    String?           @map("destination_port") @db.VarChar(150)
+  eta                DateTime
+  etd                DateTime
+  ataAnchorage       DateTime?         @map("ata_anchorage")
+  atdPort            DateTime?         @map("atd_port")
+  status             VisitStatus       @default(REQUESTED)
+  notes              String?           @db.Text
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
 
-  port            Port             @relation(fields: [portId], references: [id], onDelete: Restrict)
-  vessel          Vessel           @relation(fields: [vesselId], references: [id], onDelete: Restrict)
-  operator        ShipOperator     @relation(fields: [operatorId], references: [id], onDelete: Restrict)
+  port             Port                      @relation(fields: [portId], references: [id], onDelete: Restrict)
+  vessel           Vessel                    @relation(fields: [vesselId], references: [id], onDelete: Restrict)
+  operator         ShipOperator              @relation(fields: [operatorId], references: [id], onDelete: Restrict)
+  berthingContract OperatorBerthingContract? @relation(fields: [berthingContractId], references: [id], onDelete: Restrict)
   berthingRecords  BerthingRecord[]
   invoices         Invoice[]
   dailyReportItems DailyPortReportItem[]
@@ -778,6 +786,7 @@ model ShipVisit {
   @@unique([portId, id])
   @@index([portId, status])
   @@index([operatorId])
+  @@index([berthingContractId])
   @@map("ship_visits")
 }
 
@@ -1220,28 +1229,33 @@ model AssetLease {
 }
 
 model OperatorBerthingContract {
-  id              Int            @id @default(autoincrement())
-  contractNumber  String         @unique @map("contract_number") @db.VarChar(60)
-  title           String         @db.VarChar(200)
-  operatorId      Int            @map("operator_id")
-  portId          Int            @map("port_id")
-  startDate       DateTime       @map("start_date") @db.Date
-  endDate         DateTime       @map("end_date") @db.Date
-  monthlyQuota    Int            @default(30) @map("monthly_quota")
-  usedQuota       Int            @default(0) @map("used_quota")
-  dockAllocation  String?        @map("dock_allocation") @db.VarChar(200)
-  filePath        String?        @map("file_path") @db.VarChar(255)
-  fileName        String?        @map("file_name") @db.VarChar(255)
-  status          ContractStatus @default(PENDING_VERIFICATION)
-  rejectionReason String?        @map("rejection_reason") @db.Text
-  verifiedById    Int?           @map("verified_by_id")
-  verifiedAt      DateTime?      @map("verified_at")
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
+  id                  Int            @id @default(autoincrement())
+  contractNumber      String         @unique @map("contract_number") @db.VarChar(60)
+  title               String         @db.VarChar(200)
+  operatorId          Int            @map("operator_id")
+  portId              Int            @map("port_id")
+  startDate           DateTime       @map("start_date") @db.Date
+  endDate             DateTime       @map("end_date") @db.Date
+  monthlyQuota        Int            @default(30) @map("monthly_quota")
+  usedQuota           Int            @default(0) @map("used_quota")
+  dockAllocation      String?        @map("dock_allocation") @db.VarChar(200)
+  filePath            String?        @map("file_path") @db.VarChar(255)
+  fileName            String?        @map("file_name") @db.VarChar(255)
+  status              ContractStatus @default(PENDING_VERIFICATION)
+  rejectionReason     String?        @map("rejection_reason") @db.Text
+  reviewedByOfficerId Int?           @map("reviewed_by_officer_id")
+  reviewedByOfficerAt DateTime?      @map("reviewed_by_officer_at")
+  officerReviewNotes  String?        @map("officer_review_notes") @db.Text
+  verifiedById        Int?           @map("verified_by_id")
+  verifiedAt          DateTime?      @map("verified_at")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
 
-  operator   ShipOperator @relation(fields: [operatorId], references: [id], onDelete: Restrict)
-  port       Port         @relation(fields: [portId], references: [id], onDelete: Restrict)
-  verifiedBy User?        @relation("BerthingContractVerifiedBy", fields: [verifiedById], references: [id], onDelete: Restrict)
+  operator          ShipOperator @relation(fields: [operatorId], references: [id], onDelete: Restrict)
+  port              Port         @relation(fields: [portId], references: [id], onDelete: Restrict)
+  reviewedByOfficer User?        @relation("BerthingContractReviewedBy", fields: [reviewedByOfficerId], references: [id], onDelete: Restrict)
+  verifiedBy        User?        @relation("BerthingContractVerifiedBy", fields: [verifiedById], references: [id], onDelete: Restrict)
+  visits            ShipVisit[]
 
   @@index([operatorId, status])
   @@index([portId, status])

@@ -7,7 +7,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import * as crypto from 'crypto';
-import { OnEvent } from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { ConfigService } from '@nestjs/config';
 import {
   ActivityMode,
@@ -43,6 +43,19 @@ import {
   VoidInvoiceDto,
 } from './dto/billing.dto';
 
+export const INVOICE_ISSUED_EVENT = 'invoice.issued';
+
+export interface InvoiceIssuedEvent {
+  invoiceId: number;
+  invoiceNumber: string;
+  portId: number;
+  visitId: number;
+  operatorId: number;
+  totalAmountIdr: number;
+  dueDate: Date;
+  actorId: number;
+}
+
 @Injectable()
 export class BillingService {
   constructor(
@@ -52,6 +65,7 @@ export class BillingService {
     private readonly configService: ConfigService,
     private readonly storage: StorageService,
     private readonly exchangeRateService: ExchangeRateService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   @OnEvent(VISIT_DEPARTED_EVENT)
@@ -345,7 +359,7 @@ export class BillingService {
     const now = new Date();
     const dueDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-    return this.prisma.$transaction(async (tx) => {
+    const issuedResult = await this.prisma.$transaction(async (tx) => {
       // Check if verified advance payments on this visit already cover or partially cover this invoice
       const visitPayments = await tx.payment.aggregate({
         where: {
@@ -403,6 +417,19 @@ export class BillingService {
 
       return tx.invoice.findUnique({ where: { id: invoiceId }, include: { items: true } });
     });
+
+    this.eventEmitter.emit(INVOICE_ISSUED_EVENT, {
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      portId: invoice.portId,
+      visitId: invoice.visitId,
+      operatorId: invoice.operatorId,
+      totalAmountIdr: DecimalUtil.toNumber(invoice.totalAmountIdr),
+      dueDate,
+      actorId: user.id,
+    } satisfies InvoiceIssuedEvent);
+
+    return issuedResult;
   }
 
   async voidInvoice(

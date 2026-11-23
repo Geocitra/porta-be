@@ -9,7 +9,10 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { JwtService } from '@nestjs/jwt';
 import { OperatorProfile, UserRole, VerificationStatus } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
-import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import {
+  AuthenticatedUser,
+  enrichUserWithRoleTaxonomy,
+} from '../../common/decorators/current-user.decorator';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditLogService } from '../../common/utils/audit-log.service';
 import { ChangeMyPasswordDto, UpdateMyProfileDto } from './dto/account.dto';
@@ -48,7 +51,7 @@ export class AuthService {
     operator?: { verificationStatus: VerificationStatus } | null;
     tenant?: { verificationStatus: VerificationStatus } | null;
   }) {
-    return {
+    return enrichUserWithRoleTaxonomy({
       id: user.id,
       email: user.email,
       username: user.username,
@@ -61,7 +64,7 @@ export class AuthService {
       tenantId: user.tenantId,
       tenantVerificationStatus: user.tenant?.verificationStatus ?? null,
       mustChangePassword: user.mustChangePassword,
-    };
+    });
   }
 
   async registerOperator(dto: RegisterOperatorDto) {

@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
+import { ROLE_GROUPS } from '../../common/authz/role-taxonomy';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -21,9 +22,7 @@ export class WarningsController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
-    UserRole.KEPALA_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.BENDAHARA,
+    ...ROLE_GROUPS.BILLING_WARNING_OFFICERS,
     UserRole.DISHUB_EKSEKUTIF,
     UserRole.OPERATOR_KAPAL,
     UserRole.TENANT,
@@ -33,7 +32,7 @@ export class WarningsController {
   }
 
   @Post()
-  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
+  @Roles(...ROLE_GROUPS.BILLING_WARNING_OFFICERS)
   issue(
     @Body() dto: IssueWarningDto,
     @CurrentUser() actor: AuthenticatedUser,

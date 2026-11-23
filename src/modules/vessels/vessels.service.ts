@@ -16,6 +16,7 @@ import {
   CreateBerthingContractDto,
   CreateOperatorDto,
   CreateVesselDto,
+  ReviewBerthingContractDto,
   UpdateOperatorDto,
   UpdateVesselDto,
   UploadDocumentDto,
@@ -24,6 +25,10 @@ import {
 } from './dto/vessels.dto';
 
 export const DOCUMENT_UPLOADED_EVENT = 'document.uploaded';
+export const VESSEL_REVERIFICATION_REQUIRED_EVENT = 'vessel.reverification_required';
+export const BERTHING_CONTRACT_SUBMITTED_EVENT = 'berthing_contract.submitted';
+export const BERTHING_CONTRACT_REVIEWED_EVENT = 'berthing_contract.reviewed';
+export const BERTHING_CONTRACT_VERIFIED_EVENT = 'berthing_contract.verified';
 
 export interface DocumentUploadedEvent {
   documentId: number;
@@ -33,6 +38,25 @@ export interface DocumentUploadedEvent {
   tenantId?: number | null;
   uploadedById: number;
   portId?: number | null;
+}
+
+export interface VesselReverificationRequiredEvent {
+  vesselId: number;
+  vesselName: string;
+  operatorId: number;
+  changedFields: string[];
+  actorId: number;
+}
+
+export interface BerthingContractEvent {
+  contractId: number;
+  contractNumber: string;
+  title: string;
+  operatorId: number;
+  portId: number;
+  status: ContractStatus;
+  actorId: number;
+  notes?: string | null;
 }
 
 @Injectable()
@@ -178,13 +202,25 @@ export class VesselsService {
     const existing = await this.prisma.shipOperator.findUnique({ where: { id: operatorId } });
     if (!existing) throw new NotFoundException(`Operator #${operatorId} not found`);
 
-    const updateData: UpdateOperatorDto = { ...dto };
+    const updateData: Record<string, unknown> = { ...dto };
+    let operatorResetVerification = false;
     if (scope?.operatorId) {
       delete updateData.isActive;
+      const legalChanged =
+        (dto.name !== undefined && dto.name.trim() !== existing.name) ||
+        (dto.npwp !== undefined && dto.npwp !== existing.npwp) ||
+        (dto.operatorProfile !== undefined && dto.operatorProfile !== existing.operatorProfile);
+
+      if (legalChanged && existing.verificationStatus === VerificationStatus.VERIFIED) {
+        updateData.verificationStatus = VerificationStatus.PENDING;
+        updateData.verifiedAt = null;
+        updateData.verifiedById = null;
+        operatorResetVerification = true;
+      }
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.shipOperator.update({
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const res = await tx.shipOperator.update({
         where: { id: operatorId },
         data: updateData,
         include: { vessels: { where: { isActive: true } }, documents: true },
@@ -194,16 +230,29 @@ export class VesselsService {
         actorId: actor?.id,
         actorRole: actor?.role,
         portId: actor?.portId,
-        action: 'OPERATOR_UPDATED',
+        action: operatorResetVerification
+          ? 'OPERATOR_UPDATED_REVERIFICATION_REQUIRED'
+          : 'OPERATOR_UPDATED',
         entityName: 'ship_operators',
         entityId: operatorId,
         beforeData: existing,
-        afterData: updated,
+        afterData: res,
         tx,
       });
 
-      return updated;
+      return res;
     });
+
+    if (operatorResetVerification && actor) {
+      this.eventEmitter.emit('company.onboarded', {
+        entityType: 'OPERATOR',
+        entityId: updated.id,
+        companyName: updated.name,
+        actorId: actor.id,
+      });
+    }
+
+    return updated;
   }
 
   async verifyOperator(operatorId: number, dto: VerifyEntityDto, actor: AuthenticatedUser) {
@@ -341,14 +390,64 @@ export class VesselsService {
       throw new ForbiddenException('Cannot update vessel of another operator');
     }
 
-    const sanitizedData: UpdateVesselDto = { ...dto };
+    const sanitizedData: Record<string, unknown> = { ...dto };
+    const changedTechnicalFields: string[] = [];
+    let requiresReverification = false;
+
     if (scope?.operatorId) {
       delete sanitizedData.operatorId;
       delete sanitizedData.isActive;
+
+      if (
+        dto.grossTonnage !== undefined &&
+        Number(dto.grossTonnage) !== Number(existing.grossTonnage)
+      ) {
+        changedTechnicalFields.push('grossTonnage');
+      }
+      if (
+        dto.lengthMeters !== undefined &&
+        Number(dto.lengthMeters) !== Number(existing.lengthMeters ?? 0)
+      ) {
+        changedTechnicalFields.push('lengthMeters');
+      }
+      if (
+        dto.draftMeters !== undefined &&
+        Number(dto.draftMeters) !== Number(existing.draftMeters ?? 0)
+      ) {
+        changedTechnicalFields.push('draftMeters');
+      }
+      if (dto.shipType !== undefined && dto.shipType !== existing.shipType) {
+        changedTechnicalFields.push('shipType');
+      }
+      if (dto.vesselCategory !== undefined && dto.vesselCategory !== existing.vesselCategory) {
+        changedTechnicalFields.push('vesselCategory');
+      }
+      if (
+        dto.shippingCategory !== undefined &&
+        dto.shippingCategory !== existing.shippingCategory
+      ) {
+        changedTechnicalFields.push('shippingCategory');
+      }
+      if (
+        dto.registrationNumber !== undefined &&
+        dto.registrationNumber !== existing.registrationNumber
+      ) {
+        changedTechnicalFields.push('registrationNumber');
+      }
+
+      if (
+        changedTechnicalFields.length > 0 &&
+        existing.verificationStatus === VerificationStatus.VERIFIED
+      ) {
+        sanitizedData.verificationStatus = VerificationStatus.PENDING;
+        sanitizedData.verifiedAt = null;
+        sanitizedData.verifiedById = null;
+        requiresReverification = true;
+      }
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.vessel.update({
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const res = await tx.vessel.update({
         where: { id: vesselId },
         data: sanitizedData,
         include: {
@@ -363,16 +462,30 @@ export class VesselsService {
         actorId: actor?.id,
         actorRole: actor?.role,
         portId: actor?.portId,
-        action: 'VESSEL_UPDATED',
+        action: requiresReverification
+          ? 'VESSEL_TECHNICAL_UPDATED_REVERIFICATION_REQUIRED'
+          : 'VESSEL_UPDATED',
         entityName: 'vessels',
         entityId: vesselId,
         beforeData: existing,
-        afterData: updated,
+        afterData: res,
         tx,
       });
 
-      return updated;
+      return res;
     });
+
+    if (requiresReverification && actor) {
+      this.eventEmitter.emit(VESSEL_REVERIFICATION_REQUIRED_EVENT, {
+        vesselId: updated.id,
+        vesselName: updated.name,
+        operatorId: updated.operatorId,
+        changedFields: changedTechnicalFields,
+        actorId: actor.id,
+      } satisfies VesselReverificationRequiredEvent);
+    }
+
+    return updated;
   }
 
   async verifyVessel(vesselId: number, dto: VerifyEntityDto, actor: AuthenticatedUser) {
@@ -539,6 +652,7 @@ export class VesselsService {
       },
       include: {
         port: { select: { id: true, code: true, name: true } },
+        reviewedByOfficer: { select: { id: true, fullName: true, role: true } },
         verifiedBy: { select: { id: true, fullName: true, role: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -580,7 +694,7 @@ export class VesselsService {
 
     const contractNumber = DocNumberUtil.generate('PKS-SDR', dto.portId);
 
-    return this.prisma.$transaction(async (tx) => {
+    const created = await this.prisma.$transaction(async (tx) => {
       const contract = await tx.operatorBerthingContract.create({
         data: {
           contractNumber,
@@ -614,20 +728,112 @@ export class VesselsService {
 
       return contract;
     });
+
+    this.eventEmitter.emit(BERTHING_CONTRACT_SUBMITTED_EVENT, {
+      contractId: created.id,
+      contractNumber: created.contractNumber,
+      title: created.title,
+      operatorId: created.operatorId,
+      portId: created.portId,
+      status: created.status,
+      actorId: actor.id,
+    } satisfies BerthingContractEvent);
+
+    return created;
   }
 
   listPendingContracts(scope: ScopeFilter) {
     return this.prisma.operatorBerthingContract.findMany({
       where: {
-        status: ContractStatus.PENDING_VERIFICATION,
+        status: {
+          in: [ContractStatus.PENDING_VERIFICATION, ContractStatus.PENDING_HEAD_OF_PORT],
+        },
         ...(scope.portId ? { portId: scope.portId } : {}),
       },
       include: {
         operator: true,
         port: { select: { id: true, code: true, name: true } },
+        reviewedByOfficer: { select: { id: true, fullName: true, role: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  async reviewContractByOfficer(
+    contractId: number,
+    dto: ReviewBerthingContractDto,
+    actor: AuthenticatedUser,
+    scope: ScopeFilter,
+  ) {
+    const existing = await this.prisma.operatorBerthingContract.findUnique({
+      where: { id: contractId },
+    });
+    if (!existing) {
+      throw new NotFoundException(`Berthing contract #${contractId} not found`);
+    }
+    if (scope.portId && existing.portId !== scope.portId) {
+      throw new ForbiddenException('Cross-port access denied');
+    }
+    if (existing.status !== ContractStatus.PENDING_VERIFICATION) {
+      throw new BadRequestException(
+        `Contract #${contractId} is not awaiting officer prerequisite check (current: ${existing.status})`,
+      );
+    }
+
+    const nextStatus =
+      dto.decision === 'APPROVE'
+        ? ContractStatus.PENDING_HEAD_OF_PORT
+        : ContractStatus.REJECTED;
+
+    if (nextStatus === ContractStatus.REJECTED && !dto.notes?.trim()) {
+      throw new BadRequestException('Catatan penolakan (notes) wajib diisi jika kontrak ditolak');
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const res = await tx.operatorBerthingContract.update({
+        where: { id: contractId },
+        data: {
+          status: nextStatus,
+          reviewedByOfficerId: actor.id,
+          reviewedByOfficerAt: new Date(),
+          officerReviewNotes: dto.notes ?? null,
+          rejectionReason: nextStatus === ContractStatus.REJECTED ? dto.notes : null,
+        },
+        include: {
+          operator: true,
+          port: true,
+          reviewedByOfficer: { select: { id: true, fullName: true, role: true } },
+        },
+      });
+
+      await this.auditLog.record({
+        actorId: actor.id,
+        actorRole: actor.role,
+        portId: existing.portId,
+        action: `OPERATOR_BERTHING_CONTRACT_OFFICER_${dto.decision}`,
+        entityName: 'operator_berthing_contracts',
+        entityId: contractId,
+        beforeData: { status: existing.status },
+        afterData: { status: nextStatus, officerReviewNotes: dto.notes },
+        reason: dto.notes,
+        tx,
+      });
+
+      return res;
+    });
+
+    this.eventEmitter.emit(BERTHING_CONTRACT_REVIEWED_EVENT, {
+      contractId: updated.id,
+      contractNumber: updated.contractNumber,
+      title: updated.title,
+      operatorId: updated.operatorId,
+      portId: updated.portId,
+      status: updated.status,
+      actorId: actor.id,
+      notes: dto.notes ?? null,
+    } satisfies BerthingContractEvent);
+
+    return updated;
   }
 
   async verifyContract(
@@ -645,14 +851,17 @@ export class VesselsService {
     if (scope.portId && existing.portId !== scope.portId) {
       throw new ForbiddenException('Cross-port access denied');
     }
-    if (existing.status !== ContractStatus.PENDING_VERIFICATION) {
+    if (
+      existing.status !== ContractStatus.PENDING_HEAD_OF_PORT &&
+      existing.status !== ContractStatus.PENDING_VERIFICATION
+    ) {
       throw new BadRequestException(
         `Contract #${contractId} is not pending verification (current: ${existing.status})`,
       );
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.operatorBerthingContract.update({
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const res = await tx.operatorBerthingContract.update({
         where: { id: contractId },
         data: {
           status: dto.status,
@@ -663,6 +872,7 @@ export class VesselsService {
         include: {
           operator: true,
           port: true,
+          reviewedByOfficer: { select: { id: true, fullName: true, role: true } },
           verifiedBy: { select: { id: true, fullName: true, role: true } },
         },
       });
@@ -680,7 +890,20 @@ export class VesselsService {
         tx,
       });
 
-      return updated;
+      return res;
     });
+
+    this.eventEmitter.emit(BERTHING_CONTRACT_VERIFIED_EVENT, {
+      contractId: updated.id,
+      contractNumber: updated.contractNumber,
+      title: updated.title,
+      operatorId: updated.operatorId,
+      portId: updated.portId,
+      status: updated.status,
+      actorId: actor.id,
+      notes: dto.rejectionReason ?? null,
+    } satisfies BerthingContractEvent);
+
+    return updated;
   }
 }

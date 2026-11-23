@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
+import { ROLE_GROUPS } from '../../common/authz/role-taxonomy';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -26,11 +27,8 @@ export class CargoUtilityController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
-    UserRole.KEPALA_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.PETUGAS_RUANGAN,
+    ...ROLE_GROUPS.CARGO_BERTH_OFFICERS,
+    UserRole.PETUGAS_TAGIHAN,
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
   )
@@ -39,11 +37,7 @@ export class CargoUtilityController {
   }
 
   @Post('cargo')
-  @Roles(
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-  )
+  @Roles(...ROLE_GROUPS.CARGO_BERTH_OFFICERS)
   createCargo(
     @Body() dto: CreateCargoRecordDto,
     @CurrentUser() actor: AuthenticatedUser,
@@ -53,7 +47,7 @@ export class CargoUtilityController {
   }
 
   @Post('cargo/:id/pay')
-  @Roles(UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
+  @Roles(...ROLE_GROUPS.BILLING_WARNING_OFFICERS)
   payCargo(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: PayChargeDto,
@@ -68,11 +62,8 @@ export class CargoUtilityController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
-    UserRole.KEPALA_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.PETUGAS_RUANGAN,
+    ...ROLE_GROUPS.CARGO_BERTH_OFFICERS,
+    UserRole.PETUGAS_TAGIHAN,
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
   )
@@ -81,11 +72,7 @@ export class CargoUtilityController {
   }
 
   @Post('equipment')
-  @Roles(
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-  )
+  @Roles(...ROLE_GROUPS.CARGO_BERTH_OFFICERS)
   createEquipment(
     @Body() dto: CreateEquipmentRentalDto,
     @CurrentUser() actor: AuthenticatedUser,
@@ -95,7 +82,7 @@ export class CargoUtilityController {
   }
 
   @Post('equipment/:id/pay')
-  @Roles(UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
+  @Roles(...ROLE_GROUPS.BILLING_WARNING_OFFICERS)
   payEquipment(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: PayChargeDto,
@@ -110,12 +97,8 @@ export class CargoUtilityController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
-    UserRole.KEPALA_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.PETUGAS_RUANGAN,
-    UserRole.BENDAHARA,
+    ...ROLE_GROUPS.ROOM_ASSET_OFFICERS,
+    ...ROLE_GROUPS.BILLING_WARNING_OFFICERS,
     UserRole.DISHUB_EKSEKUTIF,
     UserRole.TENANT,
     UserRole.OPERATOR_KAPAL,
@@ -125,12 +108,7 @@ export class CargoUtilityController {
   }
 
   @Post('utilities')
-  @Roles(
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.PETUGAS_RUANGAN,
-  )
+  @Roles(...ROLE_GROUPS.ROOM_ASSET_OFFICERS)
   createUtility(
     @Body() dto: CreateUtilityReadingDto,
     @CurrentUser() actor: AuthenticatedUser,
@@ -140,7 +118,7 @@ export class CargoUtilityController {
   }
 
   @Post('utilities/:id/pay')
-  @Roles(UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
+  @Roles(...ROLE_GROUPS.BILLING_WARNING_OFFICERS)
   payUtility(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: PayChargeDto,
@@ -155,10 +133,8 @@ export class CargoUtilityController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
-    UserRole.KEPALA_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.BENDAHARA,
-    UserRole.PETUGAS_RUANGAN,
+    ...ROLE_GROUPS.ROOM_ASSET_OFFICERS,
+    ...ROLE_GROUPS.BILLING_WARNING_OFFICERS,
     UserRole.TENANT,
     UserRole.OPERATOR_KAPAL,
   )

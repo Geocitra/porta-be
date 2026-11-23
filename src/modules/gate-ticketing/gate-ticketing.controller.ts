@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
+import { ROLE_GROUPS } from '../../common/authz/role-taxonomy';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -37,10 +38,7 @@ export class GateTicketingController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
-    UserRole.KEPALA_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
+    ...ROLE_GROUPS.PASSENGER_BERTH_OFFICERS,
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
   )
@@ -49,7 +47,12 @@ export class GateTicketingController {
   }
 
   @Post('books')
-  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
+  @Roles(
+    UserRole.KEPALA_PELABUHAN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.BENDAHARA,
+    UserRole.PETUGAS_DERMAGA_PENUMPANG,
+  )
   createBook(
     @Body() dto: CreateGateTicketBookDto,
     @CurrentUser() actor: AuthenticatedUser,
@@ -63,10 +66,7 @@ export class GateTicketingController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
-    UserRole.KEPALA_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
+    ...ROLE_GROUPS.PASSENGER_BERTH_OFFICERS,
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
   )
@@ -75,12 +75,7 @@ export class GateTicketingController {
   }
 
   @Post('handovers/open')
-  @Roles(
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.BENDAHARA,
-  )
+  @Roles(...ROLE_GROUPS.PASSENGER_BERTH_OFFICERS, UserRole.BENDAHARA)
   openHandover(
     @Body() dto: OpenGateHandoverDto,
     @CurrentUser() actor: AuthenticatedUser,
@@ -119,10 +114,7 @@ export class GateTicketingController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
-    UserRole.KEPALA_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
+    ...ROLE_GROUPS.ALL_BERTH_OFFICERS,
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
     UserRole.OPERATOR_KAPAL,
@@ -132,12 +124,7 @@ export class GateTicketingController {
   }
 
   @Post('manifests')
-  @Roles(
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.OPERATOR_KAPAL,
-  )
+  @Roles(...ROLE_GROUPS.ALL_BERTH_OFFICERS, UserRole.OPERATOR_KAPAL)
   createManifest(
     @Body() dto: CreateVesselManifestDto,
     @CurrentUser() actor: AuthenticatedUser,

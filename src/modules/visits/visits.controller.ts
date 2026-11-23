@@ -15,6 +15,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { UserRole, VesselCategory } from '@prisma/client';
+import { ROLE_GROUPS } from '../../common/authz/role-taxonomy';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -42,11 +43,9 @@ export class VisitsController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
-    UserRole.KEPALA_PELABUHAN,
+    ...ROLE_GROUPS.ALL_FIELD_OFFICERS,
     UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.BENDAHARA,
+    UserRole.KEPALA_PELABUHAN,
     UserRole.DISHUB_EKSEKUTIF,
     UserRole.OPERATOR_KAPAL,
   )
@@ -60,12 +59,7 @@ export class VisitsController {
   }
 
   @Get('berthing-overrides/pending')
-  @Roles(
-    UserRole.KEPALA_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-  )
+  @Roles(...ROLE_GROUPS.ALL_BERTH_OFFICERS)
   findPendingOverrides(@Req() req: { portScope: ScopeFilter }) {
     return this.visitsService.findPendingBerthingOverrides(req.portScope);
   }
@@ -75,11 +69,9 @@ export class VisitsController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
-    UserRole.KEPALA_PELABUHAN,
+    ...ROLE_GROUPS.ALL_FIELD_OFFICERS,
     UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.BENDAHARA,
+    UserRole.KEPALA_PELABUHAN,
     UserRole.DISHUB_EKSEKUTIF,
     UserRole.OPERATOR_KAPAL,
   )
@@ -88,12 +80,7 @@ export class VisitsController {
   }
 
   @Get(':id/berthings/check-compatibility')
-  @Roles(
-    UserRole.KEPALA_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-  )
+  @Roles(...ROLE_GROUPS.ALL_BERTH_OFFICERS)
   @ApiQuery({ name: 'berthId', type: Number, required: true })
   checkCompatibility(
     @Param('id', ParseIntPipe) id: number,
@@ -104,12 +91,7 @@ export class VisitsController {
   }
 
   @Post()
-  @Roles(
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.OPERATOR_KAPAL,
-  )
+  @Roles(...ROLE_GROUPS.ALL_BERTH_OFFICERS, UserRole.OPERATOR_KAPAL)
   createVisit(
     @Body() dto: CreateVisitDto,
     @CurrentUser() user: AuthenticatedUser,
@@ -119,12 +101,7 @@ export class VisitsController {
   }
 
   @Post(':id/approve')
-  @Roles(
-    UserRole.KEPALA_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-  )
+  @Roles(...ROLE_GROUPS.ALL_BERTH_OFFICERS)
   approveVisit(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthenticatedUser,
@@ -134,11 +111,7 @@ export class VisitsController {
   }
 
   @Post(':id/arrival')
-  @Roles(
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-  )
+  @Roles(...ROLE_GROUPS.ALL_BERTH_OFFICERS)
   recordArrival(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RecordArrivalDto,
@@ -149,11 +122,7 @@ export class VisitsController {
   }
 
   @Post(':id/berthings/start')
-  @Roles(
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-  )
+  @Roles(...ROLE_GROUPS.ALL_BERTH_OFFICERS)
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('evidenceFile'))
   startBerthing(
@@ -179,11 +148,7 @@ export class VisitsController {
   }
 
   @Post(':id/berthings/:berthingId/end')
-  @Roles(
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-  )
+  @Roles(...ROLE_GROUPS.ALL_BERTH_OFFICERS)
   endBerthing(
     @Param('id', ParseIntPipe) id: number,
     @Param('berthingId', ParseIntPipe) berthingId: number,
@@ -195,11 +160,7 @@ export class VisitsController {
   }
 
   @Post(':id/depart')
-  @Roles(
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-  )
+  @Roles(...ROLE_GROUPS.ALL_BERTH_OFFICERS)
   recordDeparture(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RecordDepartureDto,

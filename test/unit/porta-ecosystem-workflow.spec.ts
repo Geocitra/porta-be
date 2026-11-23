@@ -885,4 +885,335 @@ describe('PORTA Master Restructuring — 20+ Mandatory Scenarios (Hierarchy, Ass
     expect(duplicateSecond?.id).toBe(1);
     expect(mockPrisma.notification.create).toHaveBeenCalledTimes(1);
   });
+
+  // ==========================================================================
+  // SCENARIO 20–23: Specialized Officer Roles, Anti-Bypass, Contract Quota & Multi-Stage PKS
+  // ==========================================================================
+
+  it('Scenario 20: Anti-Bypass — OPERATOR_KAPAL editing technical/tariff fields on a VERIFIED vessel automatically resets verificationStatus to PENDING and triggers reverification event', async () => {
+    const eventEmitter = new EventEmitter2();
+    const emitSpy = jest.spyOn(eventEmitter, 'emit');
+
+    const mockPrisma: any = {
+      vessel: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 77,
+          operatorId: 10,
+          name: 'KM Papua Mandiri',
+          registrationNumber: 'REG-PM-77',
+          grossTonnage: 800,
+          lengthMeters: 65,
+          draftMeters: 4.5,
+          shipType: 'NIAGA',
+          vesselCategory: VesselCategory.BARANG,
+          shippingCategory: 'DALAM_NEGERI',
+          verificationStatus: VerificationStatus.VERIFIED,
+        }),
+        update: jest.fn().mockImplementation(async ({ data }: any) => ({
+          id: 77,
+          operatorId: 10,
+          name: 'KM Papua Mandiri',
+          ...data,
+        })),
+      },
+      $transaction: jest.fn(async (cb) => cb(mockPrisma)),
+    };
+
+    const vesselsService = new VesselsService(
+      mockPrisma,
+      {} as any,
+      { record: jest.fn() } as any,
+      eventEmitter,
+    );
+
+    const operatorActor: AuthenticatedUser = {
+      id: 201,
+      email: 'ops@papua-shipping.co.id',
+      username: 'ops.papua',
+      fullName: 'Operator Pelayaran',
+      role: UserRole.OPERATOR_KAPAL,
+      portId: null,
+      operatorId: 10,
+      tenantId: null,
+      mustChangePassword: false,
+    };
+
+    const updated = await vesselsService.updateVessel(
+      77,
+      { grossTonnage: 350 },
+      operatorActor,
+      { operatorId: 10 },
+    );
+
+    expect(updated.verificationStatus).toBe(VerificationStatus.PENDING);
+    expect(updated.verifiedAt).toBeNull();
+    expect(updated.verifiedById).toBeNull();
+    expect(emitSpy).toHaveBeenCalledWith(
+      'vessel.reverification_required',
+      expect.objectContaining({
+        vesselId: 77,
+        changedFields: ['grossTonnage'],
+      }),
+    );
+  });
+
+  it('Scenario 21: Multi-Stage OperatorBerthingContract — PETUGAS_REGISTRASI_KONTRAK reviews prerequisites (PENDING_HEAD_OF_PORT) and KEPALA_PELABUHAN grants final ACC (ACTIVE)', async () => {
+    let contractState: any = {
+      id: 300,
+      contractNumber: 'PKS-SDR-2026-001',
+      title: 'PKS Sandar Armada Rutin 2026',
+      operatorId: 10,
+      portId: 1,
+      status: 'PENDING_VERIFICATION',
+    };
+
+    const mockPrisma: any = {
+      operatorBerthingContract: {
+        findUnique: jest.fn().mockImplementation(async () => contractState),
+        update: jest.fn().mockImplementation(async ({ data }: any) => {
+          contractState = { ...contractState, ...data };
+          return contractState;
+        }),
+      },
+      $transaction: jest.fn(async (cb) => cb(mockPrisma)),
+    };
+
+    const vesselsService = new VesselsService(
+      mockPrisma,
+      {} as any,
+      { record: jest.fn() } as any,
+      new EventEmitter2(),
+    );
+
+    const petugasRegActor: AuthenticatedUser = {
+      id: 301,
+      email: 'petugas.registrasi@porta.mimikakab.go.id',
+      username: 'petugas.registrasi',
+      fullName: 'Agustina Yoku (Petugas Registrasi & Kontrak)',
+      role: UserRole.PETUGAS_REGISTRASI_KONTRAK,
+      portId: 1,
+      operatorId: null,
+      tenantId: null,
+      mustChangePassword: false,
+    };
+
+    const reviewed = await vesselsService.reviewContractByOfficer(
+      300,
+      { decision: 'APPROVE', notes: 'SIUPAL dan daftar armada lengkap.' },
+      petugasRegActor,
+      { portId: 1 },
+    );
+    expect(reviewed.status).toBe('PENDING_HEAD_OF_PORT');
+    expect(reviewed.reviewedByOfficerId).toBe(petugasRegActor.id);
+
+    const verified = await vesselsService.verifyContract(
+      300,
+      { status: 'ACTIVE' as any },
+      kepalaPelabuhanPort1,
+      { portId: 1 },
+    );
+    expect(verified.status).toBe('ACTIVE');
+    expect(verified.verifiedById).toBe(kepalaPelabuhanPort1.id);
+  });
+
+  it('Scenario 22: Smart Task Routing assigns automatic tasks to the exact specialized officer role (PETUGAS_REGISTRASI_KONTRAK, PETUGAS_DERMAGA_BARANG, PETUGAS_DERMAGA_PENUMPANG, PETUGAS_RUANGAN, PETUGAS_TAGIHAN)', async () => {
+    const assignments = [
+      {
+        id: 1,
+        userId: 101,
+        role: UserRole.PETUGAS_REGISTRASI_KONTRAK,
+        portId: 1,
+        berthId: null,
+        terminalId: null,
+        zoneId: null,
+        taskTypes: [TaskType.COMPANY_REGISTRATION_CHECK, TaskType.DOCUMENT_VERIFICATION],
+      },
+      {
+        id: 2,
+        userId: 102,
+        role: UserRole.PETUGAS_DERMAGA_BARANG,
+        portId: 1,
+        berthId: null,
+        terminalId: null,
+        zoneId: null,
+        taskTypes: [TaskType.VESSEL_ARRIVAL_CHECK, TaskType.CARGO_HANDLING_CHECK],
+      },
+      {
+        id: 3,
+        userId: 103,
+        role: UserRole.PETUGAS_DERMAGA_PENUMPANG,
+        portId: 1,
+        berthId: null,
+        terminalId: null,
+        zoneId: null,
+        taskTypes: [TaskType.VESSEL_ARRIVAL_CHECK, TaskType.PASSENGER_SERVICE],
+      },
+      {
+        id: 4,
+        userId: 104,
+        role: UserRole.PETUGAS_RUANGAN,
+        portId: 1,
+        berthId: null,
+        terminalId: null,
+        zoneId: null,
+        taskTypes: [TaskType.MAINTENANCE_HANDLING, TaskType.ASSET_MANAGEMENT_CHECK],
+      },
+      {
+        id: 5,
+        userId: 105,
+        role: UserRole.PETUGAS_TAGIHAN,
+        portId: 1,
+        berthId: null,
+        terminalId: null,
+        zoneId: null,
+        taskTypes: [TaskType.RETRIBUTION_COLLECTION],
+      },
+    ];
+
+    const mockPrisma: any = {
+      port: { findUnique: jest.fn().mockResolvedValue({ id: 1, isActive: true }) },
+      shipVisit: {
+        findUnique: jest.fn().mockImplementation(async ({ where }: any) => ({
+          id: where.id,
+          portId: 1,
+          vessel: {
+            vesselCategory: where.id === 1 ? VesselCategory.BARANG : VesselCategory.PENUMPANG,
+          },
+        })),
+      },
+      userAssignment: { findMany: jest.fn().mockResolvedValue(assignments) },
+      taskTemplate: { findUnique: jest.fn().mockResolvedValue(null) },
+      task: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockImplementation(async ({ data }: any) => ({ id: 900, ...data })),
+      },
+      $transaction: jest.fn(async (cb) => cb(mockPrisma)),
+    };
+
+    const tasksService = new TasksService(
+      mockPrisma,
+      { record: jest.fn() } as any,
+      {} as any,
+      new AssignmentsService(mockPrisma, {} as any),
+      new EventEmitter2(),
+    );
+
+    const dueDate = new Date(Date.now() + 3600 * 1000).toISOString();
+
+    const docTask = await tasksService.createTask({
+      portId: 1,
+      taskType: TaskType.DOCUMENT_VERIFICATION,
+      title: 'Cek Dokumen SIUPAL',
+      description: 'Pemeriksaan dokumen legalitas perusahaan',
+      dueDate,
+    });
+    expect(docTask.assigneeId).toBe(101); // PETUGAS_REGISTRASI_KONTRAK
+
+    const cargoVisitTask = await tasksService.createTask({
+      portId: 1,
+      visitId: 1, // BARANG vessel
+      taskType: TaskType.VESSEL_ARRIVAL_CHECK,
+      title: 'Kedatangan Kapal Barang',
+      description: 'Pemeriksaan kedatangan kapal barang',
+      dueDate,
+    });
+    expect(cargoVisitTask.assigneeId).toBe(102); // PETUGAS_DERMAGA_BARANG
+
+    const passengerVisitTask = await tasksService.createTask({
+      portId: 1,
+      visitId: 2, // PENUMPANG vessel
+      taskType: TaskType.VESSEL_ARRIVAL_CHECK,
+      title: 'Kedatangan Kapal Penumpang',
+      description: 'Pemeriksaan kedatangan kapal penumpang',
+      dueDate,
+    });
+    expect(passengerVisitTask.assigneeId).toBe(103); // PETUGAS_DERMAGA_PENUMPANG
+
+    const maintTask = await tasksService.createTask({
+      portId: 1,
+      taskType: TaskType.MAINTENANCE_HANDLING,
+      title: 'Perbaikan Kios Terminal',
+      description: 'Penanganan tiket pemeliharaan kios',
+      dueDate,
+    });
+    expect(maintTask.assigneeId).toBe(104); // PETUGAS_RUANGAN
+
+    const billingTask = await tasksService.createTask({
+      portId: 1,
+      taskType: TaskType.RETRIBUTION_COLLECTION,
+      title: 'Penagihan SKRD',
+      description: 'Penagihan retribusi SKRD kunjungan kapal',
+      dueDate,
+    });
+    expect(billingTask.assigneeId).toBe(105); // PETUGAS_TAGIHAN
+  });
+
+  it('Scenario 23: End-to-End Event Triggers for AssetLease (ASSET_LEASE_REQUESTED_EVENT -> PETUGAS_RUANGAN) and Invoice (INVOICE_ISSUED_EVENT -> PETUGAS_TAGIHAN) plus BENDAHARA task execution state machine', async () => {
+    const createTaskSpy = jest.fn().mockResolvedValue({ id: 999 });
+    const triggerListener = new TaskTriggerListener(
+      { createTask: createTaskSpy } as any,
+      {} as any,
+    );
+
+    await triggerListener.handleAssetLeaseRequested({
+      leaseId: 40,
+      contractNumber: 'REQ-SWA-01',
+      portId: 1,
+      assetId: 5,
+      assetName: 'Gudang Lini I Poumako',
+      tenantName: 'PT Logistik Timika',
+      actorId: 210,
+    });
+
+    expect(createTaskSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskType: TaskType.ASSET_MANAGEMENT_CHECK,
+        sourceType: TaskSourceType.ASSET_LEASE,
+        sourceId: '40',
+        portId: 1,
+      }),
+    );
+
+    await triggerListener.handleInvoiceIssued({
+      invoiceId: 88,
+      invoiceNumber: 'SKRD-PMK-088',
+      portId: 1,
+      visitId: 12,
+      operatorId: 10,
+      totalAmountIdr: 15_500_000,
+      dueDate: new Date(Date.now() + 7 * 86400 * 1000),
+      actorId: 105,
+    });
+
+    expect(createTaskSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskType: TaskType.RETRIBUTION_COLLECTION,
+        sourceType: TaskSourceType.BILLING_INVOICE,
+        sourceId: '88',
+        portId: 1,
+      }),
+    );
+
+    // Verify BENDAHARA can start and submit RETRIBUTION_COLLECTION tasks in the state machine
+    const startTransition = evaluateTaskStateTransition({
+      action: 'START_EXECUTION',
+      actorRole: UserRole.BENDAHARA,
+      actorId: 106,
+      assigneeId: 106,
+      currentExecutionStatus: TaskExecutionStatus.NOT_STARTED,
+      currentReviewStatus: TaskReviewStatus.NOT_SUBMITTED,
+    });
+    expect(startTransition.nextExecutionStatus).toBe(TaskExecutionStatus.IN_PROGRESS);
+
+    const submitTransition = evaluateTaskStateTransition({
+      action: 'SUBMIT_TASK',
+      actorRole: UserRole.BENDAHARA,
+      actorId: 106,
+      assigneeId: 106,
+      currentExecutionStatus: TaskExecutionStatus.IN_PROGRESS,
+      currentReviewStatus: TaskReviewStatus.NOT_SUBMITTED,
+    });
+    expect(submitTransition.nextExecutionStatus).toBe(TaskExecutionStatus.SUBMITTED);
+    expect(submitTransition.nextReviewStatus).toBe(TaskReviewStatus.WAITING_ADMIN);
+  });
 });

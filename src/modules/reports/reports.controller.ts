@@ -25,6 +25,7 @@ import { ReportsService } from './reports.service';
   UserRole.KEPALA_BIDANG,
   UserRole.KEPALA_PELABUHAN,
   UserRole.ADMIN_PELABUHAN,
+  UserRole.PETUGAS_TAGIHAN,
   UserRole.BENDAHARA,
   UserRole.DISHUB_EKSEKUTIF,
 )

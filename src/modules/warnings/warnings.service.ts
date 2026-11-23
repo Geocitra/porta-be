@@ -38,6 +38,9 @@ export class WarningsService {
     return this.prisma.warning.findMany({
       where: {
         ...(scope.portId ? { portId: scope.portId } : {}),
+        ...(scope.allowedPortIds && !scope.portId
+          ? { portId: { in: scope.allowedPortIds } }
+          : {}),
         ...(scope.operatorId ? { operatorId: scope.operatorId } : {}),
       },
       include: {

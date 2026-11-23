@@ -16,6 +16,7 @@ import {
   TaskType,
   UserRole,
 } from '@prisma/client';
+import { ROLE_GROUPS } from '../../common/authz/role-taxonomy';
 import {
   AuthenticatedUser,
   isPetugasRole,
@@ -134,7 +135,7 @@ export class DailyReportsService {
     const officers = await this.prisma.user.findMany({
       where: {
         isActive: true,
-        role: { in: [UserRole.PETUGAS_PELABUHAN, UserRole.PETUGAS_DERMAGA] },
+        role: { in: ROLE_GROUPS.ALL_FIELD_OFFICERS },
         ...(effectivePortId ? { portId: effectivePortId } : {}),
         ...(scope.allowedPortIds && !effectivePortId
           ? { portId: { in: scope.allowedPortIds } }

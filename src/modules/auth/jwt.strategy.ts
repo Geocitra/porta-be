@@ -4,7 +4,10 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { AssignmentStatus } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import {
+  AuthenticatedUser,
+  enrichUserWithRoleTaxonomy,
+} from '../../common/decorators/current-user.decorator';
 
 export interface JwtPayload {
   sub: number;
@@ -77,7 +80,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       );
     }
 
-    return {
+    return enrichUserWithRoleTaxonomy({
       id: user.id,
       email: user.email,
       username: user.username,
@@ -89,6 +92,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       tenantId: user.tenantId,
       mustChangePassword: user.mustChangePassword,
       activeAssignments: user.assignments,
-    };
+    });
   }
 }

@@ -36,6 +36,10 @@ export interface TaskStateTransitionResult {
  * Enforces strict role separation: SUPERADMIN is strictly prohibited from operational execution,
  * administrative checking, and substantive verification.
  */
+function isTaskExecutorRole(role: UserRole): boolean {
+  return isPetugasRole(role) || role === UserRole.BENDAHARA;
+}
+
 export function evaluateTaskStateTransition(
   input: TaskStateTransitionInput,
 ): TaskStateTransitionResult {
@@ -56,8 +60,8 @@ export function evaluateTaskStateTransition(
 
   switch (action) {
     case 'START_EXECUTION': {
-      if (!isPetugasRole(actorRole)) {
-        throw new ForbiddenException('Hanya Petugas Pelabuhan yang dapat memulai pelaksanaan pekerjaan.');
+      if (!isTaskExecutorRole(actorRole)) {
+        throw new ForbiddenException('Hanya Petugas Pelabuhan / Bendahara yang dapat memulai pelaksanaan pekerjaan.');
       }
       if (
         currentExecutionStatus !== TaskExecutionStatus.NOT_STARTED &&
@@ -84,8 +88,8 @@ export function evaluateTaskStateTransition(
     }
 
     case 'SUBMIT_TASK': {
-      if (!isPetugasRole(actorRole)) {
-        throw new ForbiddenException('Hanya Petugas Pelabuhan yang dapat mengirim (submit) pekerjaan.');
+      if (!isTaskExecutorRole(actorRole)) {
+        throw new ForbiddenException('Hanya Petugas Pelabuhan / Bendahara yang dapat mengirim (submit) pekerjaan.');
       }
       if (
         currentExecutionStatus === TaskExecutionStatus.SUBMITTED ||

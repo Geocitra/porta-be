@@ -16,6 +16,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { UserRole, VesselCategory } from '@prisma/client';
+import { ROLE_GROUPS } from '../../common/authz/role-taxonomy';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -25,6 +26,7 @@ import {
   CreateBerthingContractDto,
   CreateOperatorDto,
   CreateVesselDto,
+  ReviewBerthingContractDto,
   UpdateOperatorDto,
   UpdateVesselDto,
   UploadDocumentDto,
@@ -45,11 +47,9 @@ export class OperatorsController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
-    UserRole.KEPALA_PELABUHAN,
+    ...ROLE_GROUPS.ALL_FIELD_OFFICERS,
     UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.BENDAHARA,
+    UserRole.KEPALA_PELABUHAN,
     UserRole.DISHUB_EKSEKUTIF,
     UserRole.OPERATOR_KAPAL,
   )
@@ -58,13 +58,28 @@ export class OperatorsController {
   }
 
   @Get('contracts/pending')
-  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN, UserRole.SUPERADMIN)
+  @Roles(...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS)
   listPendingContracts(@Req() req: { portScope: ScopeFilter }) {
     return this.vesselsService.listPendingContracts(req.portScope);
   }
 
+  @Patch('contracts/:contractId/review')
+  @Roles(
+    UserRole.PETUGAS_REGISTRASI_KONTRAK,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.ADMIN_PELABUHAN,
+  )
+  reviewContract(
+    @Param('contractId', ParseIntPipe) contractId: number,
+    @Body() dto: ReviewBerthingContractDto,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.vesselsService.reviewContractByOfficer(contractId, dto, actor, req.portScope);
+  }
+
   @Patch('contracts/:contractId/verify')
-  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.SUPERADMIN)
+  @Roles(UserRole.KEPALA_PELABUHAN)
   verifyContract(
     @Param('contractId', ParseIntPipe) contractId: number,
     @Body() dto: VerifyBerthingContractDto,
@@ -76,10 +91,9 @@ export class OperatorsController {
 
   @Get(':id/contracts')
   @Roles(
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.KEPALA_PELABUHAN,
+    ...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS,
+    ...ROLE_GROUPS.ALL_BERTH_OFFICERS,
     UserRole.OPERATOR_KAPAL,
-    UserRole.SUPERADMIN,
   )
   getOperatorContracts(
     @Param('id', ParseIntPipe) id: number,
@@ -89,7 +103,11 @@ export class OperatorsController {
   }
 
   @Post(':id/contracts')
-  @Roles(UserRole.ADMIN_PELABUHAN, UserRole.OPERATOR_KAPAL)
+  @Roles(
+    UserRole.PETUGAS_REGISTRASI_KONTRAK,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.OPERATOR_KAPAL,
+  )
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   createOperatorContract(
@@ -107,11 +125,9 @@ export class OperatorsController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
-    UserRole.KEPALA_PELABUHAN,
+    ...ROLE_GROUPS.ALL_FIELD_OFFICERS,
     UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.BENDAHARA,
+    UserRole.KEPALA_PELABUHAN,
     UserRole.DISHUB_EKSEKUTIF,
     UserRole.OPERATOR_KAPAL,
   )
@@ -127,11 +143,9 @@ export class OperatorsController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
-    UserRole.KEPALA_PELABUHAN,
+    ...ROLE_GROUPS.ALL_FIELD_OFFICERS,
     UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.BENDAHARA,
+    UserRole.KEPALA_PELABUHAN,
     UserRole.DISHUB_EKSEKUTIF,
     UserRole.OPERATOR_KAPAL,
   )
@@ -146,17 +160,13 @@ export class OperatorsController {
   }
 
   @Post()
-  @Roles(
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-  )
+  @Roles(...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS)
   createOperator(@Body() dto: CreateOperatorDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.vesselsService.createOperator(dto, actor);
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN_PELABUHAN, UserRole.KEPALA_PELABUHAN, UserRole.OPERATOR_KAPAL)
+  @Roles(...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS, UserRole.OPERATOR_KAPAL)
   updateOperator(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateOperatorDto,
@@ -167,7 +177,7 @@ export class OperatorsController {
   }
 
   @Post(':id/verify')
-  @Roles(UserRole.ADMIN_PELABUHAN, UserRole.KEPALA_PELABUHAN)
+  @Roles(...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS)
   verifyOperator(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: VerifyEntityDto,
@@ -177,12 +187,7 @@ export class OperatorsController {
   }
 
   @Post(':id/vessels')
-  @Roles(
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.OPERATOR_KAPAL,
-  )
+  @Roles(...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS, UserRole.OPERATOR_KAPAL)
   createVesselForOperator(
     @Param('id', ParseIntPipe) operatorId: number,
     @Body() dto: CreateVesselDto,
@@ -193,12 +198,7 @@ export class OperatorsController {
   }
 
   @Post(':id/documents')
-  @Roles(
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.OPERATOR_KAPAL,
-  )
+  @Roles(...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS, UserRole.OPERATOR_KAPAL)
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   uploadOperatorDocument(
@@ -224,11 +224,9 @@ export class VesselsController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
-    UserRole.KEPALA_PELABUHAN,
+    ...ROLE_GROUPS.ALL_FIELD_OFFICERS,
     UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.BENDAHARA,
+    UserRole.KEPALA_PELABUHAN,
     UserRole.DISHUB_EKSEKUTIF,
     UserRole.OPERATOR_KAPAL,
   )
@@ -237,17 +235,13 @@ export class VesselsController {
   }
 
   @Post('operators')
-  @Roles(
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-  )
+  @Roles(...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS)
   createOperator(@Body() dto: CreateOperatorDto, @CurrentUser() actor: AuthenticatedUser) {
     return this.vesselsService.createOperator(dto, actor);
   }
 
   @Patch('operators/:id')
-  @Roles(UserRole.ADMIN_PELABUHAN, UserRole.KEPALA_PELABUHAN, UserRole.OPERATOR_KAPAL)
+  @Roles(...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS, UserRole.OPERATOR_KAPAL)
   updateOperator(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateOperatorDto,
@@ -258,7 +252,7 @@ export class VesselsController {
   }
 
   @Post('operators/:id/verify')
-  @Roles(UserRole.ADMIN_PELABUHAN, UserRole.KEPALA_PELABUHAN)
+  @Roles(...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS)
   verifyOperator(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: VerifyEntityDto,
@@ -268,12 +262,7 @@ export class VesselsController {
   }
 
   @Post('operators/:id/documents')
-  @Roles(
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.OPERATOR_KAPAL,
-  )
+  @Roles(...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS, UserRole.OPERATOR_KAPAL)
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   uploadOperatorDocument(
@@ -286,16 +275,77 @@ export class VesselsController {
     return this.vesselsService.uploadOperatorDocument(id, dto, file, actor, req.portScope);
   }
 
+  @Get('operators/:id/contracts')
+  @Roles(
+    ...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS,
+    ...ROLE_GROUPS.ALL_BERTH_OFFICERS,
+    UserRole.OPERATOR_KAPAL,
+  )
+  getOperatorContractsAlias(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.vesselsService.getOperatorContracts(id, req.portScope);
+  }
+
+  @Post('operators/:id/contracts')
+  @Roles(
+    UserRole.PETUGAS_REGISTRASI_KONTRAK,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.OPERATOR_KAPAL,
+  )
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file'))
+  createOperatorContractAlias(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateBerthingContractDto,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.vesselsService.createOperatorContract(id, dto, file, actor, req.portScope);
+  }
+
+  @Get('contracts/pending')
+  @Roles(...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS)
+  listPendingContractsAlias(@Req() req: { portScope: ScopeFilter }) {
+    return this.vesselsService.listPendingContracts(req.portScope);
+  }
+
+  @Patch('contracts/:contractId/review')
+  @Roles(
+    UserRole.PETUGAS_REGISTRASI_KONTRAK,
+    UserRole.PETUGAS_PELABUHAN,
+    UserRole.ADMIN_PELABUHAN,
+  )
+  reviewContractAlias(
+    @Param('contractId', ParseIntPipe) contractId: number,
+    @Body() dto: ReviewBerthingContractDto,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.vesselsService.reviewContractByOfficer(contractId, dto, actor, req.portScope);
+  }
+
+  @Patch('contracts/:contractId/verify')
+  @Roles(UserRole.KEPALA_PELABUHAN)
+  verifyContractAlias(
+    @Param('contractId', ParseIntPipe) contractId: number,
+    @Body() dto: VerifyBerthingContractDto,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.vesselsService.verifyContract(contractId, dto, actor, req.portScope);
+  }
+
   @Get()
   @Roles(
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
-    UserRole.KEPALA_PELABUHAN,
+    ...ROLE_GROUPS.ALL_FIELD_OFFICERS,
     UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.BENDAHARA,
+    UserRole.KEPALA_PELABUHAN,
     UserRole.DISHUB_EKSEKUTIF,
     UserRole.OPERATOR_KAPAL,
   )
@@ -309,12 +359,7 @@ export class VesselsController {
   }
 
   @Post()
-  @Roles(
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.OPERATOR_KAPAL,
-  )
+  @Roles(...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS, UserRole.OPERATOR_KAPAL)
   createVessel(
     @Body() dto: CreateVesselDto,
     @Req() req: { portScope: ScopeFilter },
@@ -324,7 +369,7 @@ export class VesselsController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN_PELABUHAN, UserRole.KEPALA_PELABUHAN, UserRole.OPERATOR_KAPAL)
+  @Roles(...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS, UserRole.OPERATOR_KAPAL)
   updateVessel(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateVesselDto,
@@ -335,7 +380,7 @@ export class VesselsController {
   }
 
   @Post(':id/verify')
-  @Roles(UserRole.ADMIN_PELABUHAN, UserRole.KEPALA_PELABUHAN)
+  @Roles(...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS)
   verifyVessel(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: VerifyEntityDto,
@@ -345,12 +390,7 @@ export class VesselsController {
   }
 
   @Post(':id/documents')
-  @Roles(
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.OPERATOR_KAPAL,
-  )
+  @Roles(...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS, UserRole.OPERATOR_KAPAL)
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   uploadVesselDocument(

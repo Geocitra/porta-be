@@ -14,6 +14,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { BillingStage, UserRole } from '@prisma/client';
+import { ROLE_GROUPS } from '../../common/authz/role-taxonomy';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -49,11 +50,9 @@ export class BillingController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
-    UserRole.KEPALA_PELABUHAN,
+    ...ROLE_GROUPS.ALL_FIELD_OFFICERS,
     UserRole.ADMIN_PELABUHAN,
-    UserRole.PETUGAS_PELABUHAN,
-    UserRole.PETUGAS_DERMAGA,
-    UserRole.BENDAHARA,
+    UserRole.KEPALA_PELABUHAN,
     UserRole.DISHUB_EKSEKUTIF,
     UserRole.OPERATOR_KAPAL,
     UserRole.TENANT,
@@ -93,11 +92,7 @@ export class BillingController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
   @Post('visits/:visitId/advance-skrd')
-  @Roles(
-    UserRole.KEPALA_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.BENDAHARA,
-  )
+  @Roles(...ROLE_GROUPS.BILLING_WARNING_OFFICERS)
   generateAdvanceSkrd(
     @Param('visitId', ParseIntPipe) visitId: number,
     @Body() dto: GenerateBillingDto,
@@ -116,11 +111,7 @@ export class BillingController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
   @Post('visits/:visitId/final-skrd')
-  @Roles(
-    UserRole.KEPALA_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.BENDAHARA,
-  )
+  @Roles(...ROLE_GROUPS.BILLING_WARNING_OFFICERS)
   generateFinalSkrd(
     @Param('visitId', ParseIntPipe) visitId: number,
     @Body() dto: GenerateBillingDto,
@@ -139,11 +130,7 @@ export class BillingController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
   @Post('invoices/:id/issue')
-  @Roles(
-    UserRole.KEPALA_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.BENDAHARA,
-  )
+  @Roles(...ROLE_GROUPS.BILLING_WARNING_OFFICERS)
   issueInvoice(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: AuthenticatedUser,
@@ -155,7 +142,7 @@ export class BillingController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
   @Post('invoices/:id/void')
-  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.BENDAHARA)
+  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.BENDAHARA, UserRole.PETUGAS_TAGIHAN)
   voidInvoice(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: VoidInvoiceDto,
@@ -168,7 +155,7 @@ export class BillingController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
   @Post('invoices/:id/payments')
-  @Roles(UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
+  @Roles(...ROLE_GROUPS.BILLING_WARNING_OFFICERS)
   recordPayment(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RecordPaymentDto,
@@ -181,7 +168,7 @@ export class BillingController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
   @Post('invoices/:id/submit-payment')
-  @Roles(UserRole.OPERATOR_KAPAL, UserRole.BENDAHARA)
+  @Roles(UserRole.OPERATOR_KAPAL, UserRole.BENDAHARA, UserRole.PETUGAS_TAGIHAN)
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   submitPaymentProof(
@@ -197,7 +184,7 @@ export class BillingController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
   @Post('payments/:paymentId/verify')
-  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.BENDAHARA)
+  @Roles(...ROLE_GROUPS.TREASURY_OFFICERS)
   verifyPayment(
     @Param('paymentId', ParseIntPipe) paymentId: number,
     @CurrentUser() user: AuthenticatedUser,
@@ -213,9 +200,7 @@ export class BillingController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
-    UserRole.KEPALA_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.BENDAHARA,
+    ...ROLE_GROUPS.BILLING_WARNING_OFFICERS,
     UserRole.DISHUB_EKSEKUTIF,
     UserRole.OPERATOR_KAPAL,
   )
@@ -227,8 +212,7 @@ export class BillingController {
   @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
   @Post('invoices/:id/adjustments')
   @Roles(
-    UserRole.ADMIN_PELABUHAN,
-    UserRole.BENDAHARA,
+    ...ROLE_GROUPS.BILLING_WARNING_OFFICERS,
     UserRole.OPERATOR_KAPAL,
   )
   requestAdjustment(
@@ -243,7 +227,7 @@ export class BillingController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
   @Post('adjustments/:adjustmentId/decide')
-  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
+  @Roles(...ROLE_GROUPS.BILLING_WARNING_OFFICERS)
   decideAdjustment(
     @Param('adjustmentId', ParseIntPipe) adjustmentId: number,
     @Body() dto: DecideBillingAdjustmentDto,

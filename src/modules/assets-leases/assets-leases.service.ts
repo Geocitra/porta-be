@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   BillingEligibility,
   LeaseStatus,
@@ -33,12 +34,25 @@ import {
   VerifyTenantDto,
 } from './dto/assets-leases.dto';
 
+export const ASSET_LEASE_REQUESTED_EVENT = 'asset_lease.requested';
+
+export interface AssetLeaseRequestedEvent {
+  leaseId: number;
+  contractNumber: string;
+  portId: number;
+  assetId: number;
+  assetName: string;
+  tenantName: string;
+  actorId: number;
+}
+
 @Injectable()
 export class AssetsLeasesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditLog: AuditLogService,
     private readonly storage: StorageService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   listTenants() {
@@ -97,18 +111,43 @@ export class AssetsLeasesService {
 
     const filePath = await this.storage.saveFile(`tenants/${actor.tenantId}`, file);
 
-    return this.prisma.document.create({
-      data: {
-        tenantId: actor.tenantId,
-        category: dto.category,
-        documentNumber: dto.documentNumber,
-        filePath,
-        fileName: file.originalname,
-        mimeType: file.mimetype,
-        uploadedById: actor.id,
-        notes: dto.notes,
-      },
+    const doc = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.document.create({
+        data: {
+          tenantId: actor.tenantId,
+          category: dto.category,
+          documentNumber: dto.documentNumber,
+          filePath,
+          fileName: file.originalname,
+          mimeType: file.mimetype,
+          uploadedById: actor.id,
+          notes: dto.notes,
+        },
+      });
+
+      await this.auditLog.record({
+        actorId: actor.id,
+        actorRole: actor.role,
+        portId: actor.portId,
+        action: 'TENANT_DOCUMENT_UPLOADED',
+        entityName: 'documents',
+        entityId: created.id,
+        afterData: created,
+        tx,
+      });
+
+      return created;
     });
+
+    this.eventEmitter.emit('document.uploaded', {
+      documentId: doc.id,
+      category: doc.category,
+      tenantId: actor.tenantId,
+      uploadedById: actor.id,
+      portId: actor.portId,
+    });
+
+    return doc;
   }
 
   async verifyTenant(tenantId: number, dto: VerifyTenantDto, actor: AuthenticatedUser) {
@@ -342,7 +381,7 @@ export class AssetsLeasesService {
     // Request tracking code
     const contractNumber = DocNumberUtil.generate('REQ-SWA', asset.portId);
 
-    return this.prisma.$transaction(async (tx) => {
+    const createdLease = await this.prisma.$transaction(async (tx) => {
       const lease = await tx.assetLease.create({
         data: {
           contractNumber,
@@ -379,6 +418,18 @@ export class AssetsLeasesService {
 
       return lease;
     });
+
+    this.eventEmitter.emit(ASSET_LEASE_REQUESTED_EVENT, {
+      leaseId: createdLease.id,
+      contractNumber: createdLease.contractNumber,
+      portId: createdLease.portId,
+      assetId: createdLease.assetId,
+      assetName: asset.name,
+      tenantName: createdLease.tenantName,
+      actorId: actor.id,
+    } satisfies AssetLeaseRequestedEvent);
+
+    return createdLease;
   }
 
   async verifyRoomOfficer(

@@ -21,6 +21,12 @@ import {
   MAINTENANCE_REPORTED_EVENT,
   MaintenanceReportedEvent,
 } from '../maintenance/maintenance.service';
+import {
+  BERTHING_CONTRACT_REVIEWED_EVENT,
+  BERTHING_CONTRACT_SUBMITTED_EVENT,
+  BERTHING_CONTRACT_VERIFIED_EVENT,
+  BerthingContractEvent,
+} from '../vessels/vessels.service';
 import { WARNING_ISSUED_EVENT, WarningIssuedEvent } from '../warnings/warnings.service';
 
 export interface CreateSmartNotificationParams {
@@ -377,6 +383,8 @@ export class NotificationsService {
         portId: event.portId,
         role: {
           in: [
+            UserRole.PETUGAS_DERMAGA_BARANG,
+            UserRole.PETUGAS_DERMAGA_PENUMPANG,
             UserRole.PETUGAS_PELABUHAN,
             UserRole.PETUGAS_DERMAGA,
             UserRole.ADMIN_PELABUHAN,
@@ -400,6 +408,100 @@ export class NotificationsService {
         resourceId: event.visitId,
         dedupKey: `VESSEL_ARRIVING_${event.visitId}_USER_${u.id}`,
         linkUrl: `/visits/${event.visitId}`,
+      });
+    }
+  }
+
+  @OnEvent(BERTHING_CONTRACT_SUBMITTED_EVENT)
+  async handleBerthingContractSubmitted(event: BerthingContractEvent): Promise<void> {
+    const officers = await this.prisma.user.findMany({
+      where: {
+        isActive: true,
+        portId: event.portId,
+        role: {
+          in: [
+            UserRole.PETUGAS_REGISTRASI_KONTRAK,
+            UserRole.ADMIN_PELABUHAN,
+            UserRole.PETUGAS_PELABUHAN,
+          ],
+        },
+      },
+      select: { id: true },
+    });
+
+    for (const u of officers) {
+      await this.dispatchNotification({
+        userId: u.id,
+        portId: event.portId,
+        title: `Pengajuan Kontrak PKS Sandar Baru (${event.contractNumber})`,
+        message: `Kontrak PKS Sandar "${event.title}" menunggu pemeriksaan prasyarat oleh Petugas Registrasi & Kontrak.`,
+        type: 'BERTHING_CONTRACT_SUBMITTED',
+        category: 'CONTRACT',
+        priority: NotificationPriority.WARNING,
+        resourceType: 'operator_berthing_contracts',
+        resourceId: event.contractId,
+        dedupKey: `CONTRACT_SUBMIT_${event.contractId}_USER_${u.id}`,
+        linkUrl: `/operators/${event.operatorId}/contracts`,
+      });
+    }
+  }
+
+  @OnEvent(BERTHING_CONTRACT_REVIEWED_EVENT)
+  async handleBerthingContractReviewed(event: BerthingContractEvent): Promise<void> {
+    if (event.status === 'PENDING_HEAD_OF_PORT') {
+      const heads = await this.prisma.user.findMany({
+        where: {
+          isActive: true,
+          portId: event.portId,
+          role: UserRole.KEPALA_PELABUHAN,
+        },
+        select: { id: true },
+      });
+
+      for (const head of heads) {
+        await this.dispatchNotification({
+          userId: head.id,
+          portId: event.portId,
+          title: `Kontrak PKS Sandar Menunggu ACC Kepala Pelabuhan (${event.contractNumber})`,
+          message: `Kontrak "${event.title}" telah lolos pemeriksaan Petugas Registrasi dan menunggu pengesahan (ACC) Anda.`,
+          type: 'BERTHING_CONTRACT_WAITING_HEAD',
+          category: 'CONTRACT',
+          priority: NotificationPriority.URGENT,
+          resourceType: 'operator_berthing_contracts',
+          resourceId: event.contractId,
+          dedupKey: `CONTRACT_WAIT_HEAD_${event.contractId}_USER_${head.id}`,
+          linkUrl: `/operators/${event.operatorId}/contracts`,
+        });
+      }
+    }
+  }
+
+  @OnEvent(BERTHING_CONTRACT_VERIFIED_EVENT)
+  async handleBerthingContractVerified(event: BerthingContractEvent): Promise<void> {
+    const operatorUsers = await this.prisma.user.findMany({
+      where: { operatorId: event.operatorId, isActive: true },
+      select: { id: true },
+    });
+
+    for (const u of operatorUsers) {
+      await this.dispatchNotification({
+        userId: u.id,
+        portId: event.portId,
+        title: `Status Kontrak PKS Sandar ${event.contractNumber}: ${event.status}`,
+        message:
+          event.status === 'ACTIVE'
+            ? `Kontrak PKS Sandar "${event.title}" telah disahkan (ACC) oleh Kepala Pelabuhan dan kini AKTIF.`
+            : `Kontrak PKS Sandar "${event.title}" ditolak. Catatan: ${event.notes ?? '-'}`,
+        type: 'BERTHING_CONTRACT_VERIFIED',
+        category: 'CONTRACT',
+        priority:
+          event.status === 'ACTIVE'
+            ? NotificationPriority.INFORMATIONAL
+            : NotificationPriority.URGENT,
+        resourceType: 'operator_berthing_contracts',
+        resourceId: event.contractId,
+        dedupKey: `CONTRACT_VERIFIED_${event.contractId}_${event.status}_USER_${u.id}`,
+        linkUrl: `/kapal/kontrak`,
       });
     }
   }
