@@ -22,11 +22,13 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PortScopeGuard, ScopeFilter } from '../../common/guards/port-scope.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import {
+  CreateBerthingContractDto,
   CreateOperatorDto,
   CreateVesselDto,
   UpdateOperatorDto,
   UpdateVesselDto,
   UploadDocumentDto,
+  VerifyBerthingContractDto,
   VerifyEntityDto,
 } from './dto/vessels.dto';
 import { VesselsService } from './vessels.service';
@@ -53,6 +55,51 @@ export class OperatorsController {
   )
   findOperators(@Req() req: { portScope: ScopeFilter }) {
     return this.vesselsService.findOperators(req.portScope);
+  }
+
+  @Get('contracts/pending')
+  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN, UserRole.SUPERADMIN)
+  listPendingContracts(@Req() req: { portScope: ScopeFilter }) {
+    return this.vesselsService.listPendingContracts(req.portScope);
+  }
+
+  @Patch('contracts/:contractId/verify')
+  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.SUPERADMIN)
+  verifyContract(
+    @Param('contractId', ParseIntPipe) contractId: number,
+    @Body() dto: VerifyBerthingContractDto,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.vesselsService.verifyContract(contractId, dto, actor, req.portScope);
+  }
+
+  @Get(':id/contracts')
+  @Roles(
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.KEPALA_PELABUHAN,
+    UserRole.OPERATOR_KAPAL,
+    UserRole.SUPERADMIN,
+  )
+  getOperatorContracts(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.vesselsService.getOperatorContracts(id, req.portScope);
+  }
+
+  @Post(':id/contracts')
+  @Roles(UserRole.ADMIN_PELABUHAN, UserRole.OPERATOR_KAPAL)
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file'))
+  createOperatorContract(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateBerthingContractDto,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.vesselsService.createOperatorContract(id, dto, file, actor, req.portScope);
   }
 
   @Get(':id')
@@ -109,13 +156,14 @@ export class OperatorsController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN_PELABUHAN, UserRole.KEPALA_PELABUHAN)
+  @Roles(UserRole.ADMIN_PELABUHAN, UserRole.KEPALA_PELABUHAN, UserRole.OPERATOR_KAPAL)
   updateOperator(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateOperatorDto,
     @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
   ) {
-    return this.vesselsService.updateOperator(id, dto, actor);
+    return this.vesselsService.updateOperator(id, dto, actor, req.portScope);
   }
 
   @Post(':id/verify')
@@ -199,13 +247,14 @@ export class VesselsController {
   }
 
   @Patch('operators/:id')
-  @Roles(UserRole.ADMIN_PELABUHAN, UserRole.KEPALA_PELABUHAN)
+  @Roles(UserRole.ADMIN_PELABUHAN, UserRole.KEPALA_PELABUHAN, UserRole.OPERATOR_KAPAL)
   updateOperator(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateOperatorDto,
     @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
   ) {
-    return this.vesselsService.updateOperator(id, dto, actor);
+    return this.vesselsService.updateOperator(id, dto, actor, req.portScope);
   }
 
   @Post('operators/:id/verify')
@@ -275,13 +324,14 @@ export class VesselsController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN_PELABUHAN, UserRole.KEPALA_PELABUHAN)
+  @Roles(UserRole.ADMIN_PELABUHAN, UserRole.KEPALA_PELABUHAN, UserRole.OPERATOR_KAPAL)
   updateVessel(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateVesselDto,
+    @Req() req: { portScope: ScopeFilter },
     @CurrentUser() actor: AuthenticatedUser,
   ) {
-    return this.vesselsService.updateVessel(id, dto, actor);
+    return this.vesselsService.updateVessel(id, dto, actor, req.portScope);
   }
 
   @Post(':id/verify')

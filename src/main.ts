@@ -1,13 +1,18 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import * as path from 'path';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   app.setGlobalPrefix('api/v1');
   app.enableCors();
+  app.useStaticAssets(path.resolve(process.cwd(), 'uploads'), {
+    prefix: '/uploads/',
+  });
 
   // Strict DTO validation: strips unknown fields and rejects phantom properties
   app.useGlobalPipes(

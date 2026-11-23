@@ -21,6 +21,17 @@ import {
 export class CargoUtilityController {
   constructor(private readonly cargoUtilityService: CargoUtilityService) {}
 
+  @Get('cargo')
+  @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+    UserRole.BENDAHARA,
+  )
+  listCargo(@Req() req: { portScope: ScopeFilter }) {
+    return this.cargoUtilityService.listCargo(req.portScope);
+  }
+
   @Post('cargo')
   @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.PETUGAS_DERMAGA)
   createCargo(@Body() dto: CreateCargoRecordDto, @CurrentUser() actor: AuthenticatedUser) {
@@ -36,6 +47,17 @@ export class CargoUtilityController {
     @Req() req: { portScope: ScopeFilter },
   ) {
     return this.cargoUtilityService.payCargoRecord(id, dto, actor, req.portScope);
+  }
+
+  @Get('equipment')
+  @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+    UserRole.BENDAHARA,
+  )
+  listEquipment(@Req() req: { portScope: ScopeFilter }) {
+    return this.cargoUtilityService.listEquipment(req.portScope);
   }
 
   @Post('equipment')
@@ -88,6 +110,20 @@ export class CargoUtilityController {
     @Req() req: { portScope: ScopeFilter },
   ) {
     return this.cargoUtilityService.payUtilityReading(id, dto, actor, req.portScope);
+  }
+
+  @Get('utilities/:id/receipt')
+  @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.BENDAHARA,
+    UserRole.TENANT,
+  )
+  getUtilityReceipt(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.cargoUtilityService.getUtilityReceipt(id, req.portScope);
   }
 }
 

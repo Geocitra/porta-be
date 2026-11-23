@@ -65,6 +65,32 @@ export class CargoUtilityService {
     });
   }
 
+  async listCargo(scope: ScopeFilter) {
+    return this.prisma.cargoHandlingRecord.findMany({
+      where: {
+        ...(scope.portId ? { portId: scope.portId } : {}),
+      },
+      include: {
+        visit: { include: { vessel: true } },
+        recordedBy: { select: { id: true, fullName: true, role: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async listEquipment(scope: ScopeFilter) {
+    return this.prisma.equipmentRentalRecord.findMany({
+      where: {
+        ...(scope.portId ? { portId: scope.portId } : {}),
+      },
+      include: {
+        visit: { include: { vessel: true } },
+        recordedBy: { select: { id: true, fullName: true, role: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async createCargoRecord(dto: CreateCargoRecordDto, actor: AuthenticatedUser) {
     const visit = await this.assertVisitBelongsToPort(dto.portId, dto.visitId);
     if (visit && visit.vessel.vesselCategory === VesselCategory.PENUMPANG) {
@@ -366,6 +392,79 @@ export class CargoUtilityService {
       throw new BadRequestException(`Visit #${visitId} does not belong to port #${portId}`);
     }
     return visit;
+  }
+
+  async getUtilityReceipt(id: number, scope: ScopeFilter) {
+    const utility = await this.prisma.utilityMeterReading.findUnique({
+      where: { id },
+      include: {
+        port: true,
+        asset: {
+          include: {
+            leases: {
+              where: { status: { in: [LeaseStatus.ACTIVE, LeaseStatus.EXPIRED] } },
+              include: { tenant: true },
+            },
+          },
+        },
+        recordedBy: {
+          select: { id: true, fullName: true, role: true },
+        },
+      },
+    });
+
+    if (!utility) {
+      throw new NotFoundException(`UtilityMeterReading #${id} not found`);
+    }
+
+    if (scope.portId && utility.portId !== scope.portId) {
+      throw new ForbiddenException('Cross-port access denied');
+    }
+
+    if (scope.tenantId) {
+      const isTenantAsset = utility.asset?.leases?.some((l) => l.tenantId === scope.tenantId);
+      if (!isTenantAsset) {
+        throw new ForbiddenException('Cross-tenant access denied');
+      }
+    }
+
+    const ssrdNumber = `SSRD-UTL-${utility.readingNumber}`;
+    const matchedLease = utility.asset?.leases?.[0];
+
+    return {
+      documentTitle: 'SURAT SETORAN RETRIBUSI DAERAH (e-SSRD)',
+      subTitle: 'BUKTI PEMBAYARAN RETRIBUSI JASA USAHA DAERAH (UTILITAS PELABUHAN) SAH',
+      ssrdNumber,
+      readingNumber: utility.readingNumber,
+      paymentDate: utility.paidAt || utility.createdAt,
+      portName: utility.port.name,
+      portLocation: utility.port.location,
+      taxPayer: {
+        tenantName: matchedLease?.tenantName || 'Wajib Retribusi Tenant Pelabuhan',
+        tenantNpwp: matchedLease?.tenantNpwp || matchedLease?.tenant?.npwp || '-',
+        businessName: matchedLease?.tenant?.name || matchedLease?.tenantName || '-',
+      },
+      retributionObject: {
+        utilityType: utility.utilityType,
+        assetCode: utility.asset?.assetCode || '-',
+        assetName: utility.asset?.name || 'Fasilitas Pelabuhan',
+        meterStart: Number(utility.meterStart),
+        meterEnd: Number(utility.meterEnd),
+        volumeConsumed: Number(utility.volumeConsumed),
+        unitLabel: utility.unitLabel,
+        ratePerUnitIdr: Number(utility.ratePerUnitIdr),
+        legalBasis: 'Perda Kab. Mimika No. 4/2023 & Perbup No. 25/2024',
+        revenueAccountCode: '4.1.02.02.04 (Retribusi Penyediaan Air Bersih & Energi Listrik Pelabuhan)',
+      },
+      paymentDetails: {
+        totalAmountIdr: Number(utility.totalAmountIdr),
+        paymentStatus: utility.paymentStatus,
+        paidAt: utility.paidAt,
+        idempotencyKey: utility.idempotencyKey || `UTL-${utility.id}`,
+        recordedByName: utility.recordedBy?.fullName || 'Petugas Pencatat Meteran',
+      },
+      qrValidationCode: `PORTA-SSRD-UTL:${utility.port.code}:${ssrdNumber}:${utility.paymentStatus}`,
+    };
   }
 }
 

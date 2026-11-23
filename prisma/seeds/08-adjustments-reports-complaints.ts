@@ -3,7 +3,9 @@ import {
   BillingAdjustmentType,
   ComplaintStatus,
   DailyReportStatus,
+  NotificationPriority,
   PrismaClient,
+  UserRole,
 } from '@prisma/client';
 
 export async function seedAdjustmentsReportsComplaints(
@@ -244,6 +246,66 @@ export async function seedAdjustmentsReportsComplaints(
         },
       ],
     });
+  }
+
+  // 4B. Seed Demo Notifications for Tenant User
+  const tenantUser = await prisma.user.findFirst({
+    where: { role: UserRole.TENANT },
+  });
+  if (tenantUser) {
+    const existingTenantNotif = await prisma.notification.findFirst({
+      where: { userId: tenantUser.id },
+    });
+    if (!existingTenantNotif) {
+      await prisma.notification.createMany({
+        data: [
+          {
+            userId: tenantUser.id,
+            portId,
+            title: 'Kontrak PKS Sewa Tempat Disetujui & Terbit',
+            message: 'Permohonan sewa tempat Kios Kuliner Nusantara telah disahkan oleh Kepala Pelabuhan (No. PKS/DISHUB-MMK/AST-01/2024).',
+            type: 'LEASE_APPROVED',
+            category: 'LEASE',
+            priority: NotificationPriority.URGENT,
+            isRead: false,
+            linkUrl: '/tenant/kontrak',
+          },
+          {
+            userId: tenantUser.id,
+            portId,
+            title: 'Verifikasi Fisik Ruangan Disetujui',
+            message: 'Pemeriksaan fisik ruangan dan kelayakan aset oleh Petugas Ruangan Pelabuhan Poumako dinyatakan memenuhi syarat.',
+            type: 'LEASE_VERIFIED',
+            category: 'LEASE',
+            priority: NotificationPriority.INFORMATIONAL,
+            isRead: true,
+            linkUrl: '/tenant/kontrak',
+          },
+          {
+            userId: tenantUser.id,
+            portId,
+            title: 'Pencatatan Meteran Utilitas Listrik & Air',
+            message: 'Petugas utilitas telah mencatat pemakaian listrik dan air tawar bulan berjalan. Silakan cek tagihan utilitas Anda.',
+            type: 'UTILITY_ALERT',
+            category: 'BILLING',
+            priority: NotificationPriority.INFORMATIONAL,
+            isRead: false,
+            linkUrl: '/tenant/utilitas',
+          },
+          {
+            userId: tenantUser.id,
+            portId,
+            title: 'Pengingat Pembayaran Retribusi (e-SKRD)',
+            message: 'Tagihan retribusi sewa kios tahun berjalan telah terbit. Harap lakukan penyetoran sebelum tanggal jatuh tempo.',
+            type: 'INVOICE_ISSUED',
+            category: 'BILLING',
+            priority: NotificationPriority.WARNING,
+            isRead: false,
+            linkUrl: '/tenant/tagihan',
+          },
+        ],
+      });
+    }
   }
 
   // 5. Audit Logs

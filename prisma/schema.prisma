@@ -19,6 +19,7 @@ enum UserRole {
   ADMIN_PELABUHAN
   PETUGAS_PELABUHAN
   PETUGAS_DERMAGA
+  PETUGAS_RUANGAN
   BENDAHARA
   OPERATOR_KAPAL
   TENANT
@@ -243,11 +244,20 @@ enum PortAssetStatus {
 
 enum LeaseStatus {
   REQUESTED
+  PENDING_ROOM_OFFICER
+  PENDING_HEAD_OF_PORT
   DRAFT
   ACTIVE
   REJECTED
   EXPIRED
   TERMINATED
+}
+
+enum ContractStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  REJECTED
+  EXPIRED
 }
 
 enum MaintenanceSeverity {
@@ -479,6 +489,7 @@ model Port {
   manifests          VesselManifest[]
   billingAdjustments         BillingAdjustment[]
   paymentGatewayTransactions PaymentGatewayTransaction[]
+  berthingContracts          OperatorBerthingContract[]
 
   @@map("ports")
 }
@@ -521,6 +532,9 @@ model User {
   notificationPreferences NotificationPreference[]
   createdLeases      AssetLease[]        @relation("LeaseCreator")
   verifiedLeasePays  AssetLeasePayment[]   @relation("LeasePaymentVerifier")
+  verifiedRoomLeases AssetLease[]          @relation("LeaseRoomVerifiedBy")
+  verifiedHeadLeases AssetLease[]          @relation("LeaseHeadVerifiedBy")
+  verifiedBerthingContracts OperatorBerthingContract[] @relation("BerthingContractVerifiedBy")
   reportedMaint      MaintenanceTicket[]   @relation("MaintenanceReporter")
   recordedCargos     CargoHandlingRecord[] @relation("CargoRecorder")
   recordedEquipments EquipmentRentalRecord[] @relation("EquipmentRecorder")
@@ -610,6 +624,8 @@ model ShipOperator {
   visits     ShipVisit[]
   invoices   Invoice[]
   warnings   Warning[]
+  berthingContracts OperatorBerthingContract[]
+  assetLeases       AssetLease[]
 
   @@map("ship_operators")
 }
@@ -1166,32 +1182,70 @@ model PortAsset {
 }
 
 model AssetLease {
-  id                   Int         @id @default(autoincrement())
-  contractNumber       String      @unique @map("contract_number") @db.VarChar(60)
-  portId               Int         @map("port_id")
-  assetId              Int         @map("asset_id")
-  tenantId             Int?        @map("tenant_id")
-  tenantName           String      @map("tenant_name") @db.VarChar(150)
-  tenantNpwp           String?     @map("tenant_npwp") @db.VarChar(50)
-  tenantPhone          String?     @map("tenant_phone") @db.VarChar(50)
-  startDate            DateTime    @map("start_date") @db.Date
-  endDate              DateTime    @map("end_date") @db.Date
-  totalAnnualAmountIdr Decimal     @map("total_annual_amount_idr") @db.Decimal(16, 2)
-  status               LeaseStatus @default(DRAFT)
-  rejectionReason      String?     @map("rejection_reason") @db.Text
-  createdById          Int         @map("created_by_id")
-  createdAt            DateTime    @default(now()) @map("created_at")
-  updatedAt            DateTime    @updatedAt @map("updated_at")
+  id                      Int         @id @default(autoincrement())
+  contractNumber          String      @unique @map("contract_number") @db.VarChar(60)
+  portId                  Int         @map("port_id")
+  assetId                 Int         @map("asset_id")
+  tenantId                Int?        @map("tenant_id")
+  operatorId              Int?        @map("operator_id")
+  tenantName              String      @map("tenant_name") @db.VarChar(150)
+  tenantNpwp              String?     @map("tenant_npwp") @db.VarChar(50)
+  tenantPhone             String?     @map("tenant_phone") @db.VarChar(50)
+  startDate               DateTime    @map("start_date") @db.Date
+  endDate                 DateTime    @map("end_date") @db.Date
+  totalAnnualAmountIdr    Decimal     @map("total_annual_amount_idr") @db.Decimal(16, 2)
+  status                  LeaseStatus @default(DRAFT)
+  rejectionReason         String?     @map("rejection_reason") @db.Text
+  verifiedByRoomOfficerId Int?        @map("verified_by_room_officer_id")
+  verifiedByRoomOfficerAt DateTime?   @map("verified_by_room_officer_at")
+  verifiedByHeadOfPortId  Int?        @map("verified_by_head_of_port_id")
+  verifiedByHeadOfPortAt  DateTime?   @map("verified_by_head_of_port_at")
+  createdById             Int         @map("created_by_id")
+  createdAt               DateTime    @default(now()) @map("created_at")
+  updatedAt               DateTime    @updatedAt @map("updated_at")
 
-  port      Port                @relation(fields: [portId], references: [id], onDelete: Restrict)
-  asset     PortAsset           @relation(fields: [portId, assetId], references: [portId, id], onDelete: Restrict)
-  tenant    Tenant?             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  createdBy User                @relation("LeaseCreator", fields: [createdById], references: [id], onDelete: Restrict)
-  payments  AssetLeasePayment[]
+  port                  Port          @relation(fields: [portId], references: [id], onDelete: Restrict)
+  asset                 PortAsset     @relation(fields: [portId, assetId], references: [portId, id], onDelete: Restrict)
+  tenant                Tenant?       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  operator              ShipOperator? @relation(fields: [operatorId], references: [id], onDelete: Restrict)
+  createdBy             User          @relation("LeaseCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  verifiedByRoomOfficer User?         @relation("LeaseRoomVerifiedBy", fields: [verifiedByRoomOfficerId], references: [id], onDelete: Restrict)
+  verifiedByHeadOfPort  User?         @relation("LeaseHeadVerifiedBy", fields: [verifiedByHeadOfPortId], references: [id], onDelete: Restrict)
+  payments              AssetLeasePayment[]
 
   @@index([portId, status])
   @@index([tenantId])
+  @@index([operatorId])
   @@map("asset_leases")
+}
+
+model OperatorBerthingContract {
+  id              Int            @id @default(autoincrement())
+  contractNumber  String         @unique @map("contract_number") @db.VarChar(60)
+  title           String         @db.VarChar(200)
+  operatorId      Int            @map("operator_id")
+  portId          Int            @map("port_id")
+  startDate       DateTime       @map("start_date") @db.Date
+  endDate         DateTime       @map("end_date") @db.Date
+  monthlyQuota    Int            @default(30) @map("monthly_quota")
+  usedQuota       Int            @default(0) @map("used_quota")
+  dockAllocation  String?        @map("dock_allocation") @db.VarChar(200)
+  filePath        String?        @map("file_path") @db.VarChar(255)
+  fileName        String?        @map("file_name") @db.VarChar(255)
+  status          ContractStatus @default(PENDING_VERIFICATION)
+  rejectionReason String?        @map("rejection_reason") @db.Text
+  verifiedById    Int?           @map("verified_by_id")
+  verifiedAt      DateTime?      @map("verified_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  operator   ShipOperator @relation(fields: [operatorId], references: [id], onDelete: Restrict)
+  port       Port         @relation(fields: [portId], references: [id], onDelete: Restrict)
+  verifiedBy User?        @relation("BerthingContractVerifiedBy", fields: [verifiedById], references: [id], onDelete: Restrict)
+
+  @@index([operatorId, status])
+  @@index([portId, status])
+  @@map("operator_berthing_contracts")
 }
 
 model AssetLeasePayment {

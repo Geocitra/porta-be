@@ -75,6 +75,9 @@ export class BillingService {
   }
 
   findInvoices(scope: ScopeFilter) {
+    if (scope.tenantId && !scope.operatorId) {
+      return [];
+    }
     return this.prisma.invoice.findMany({
       where: {
         ...(scope.portId ? { portId: scope.portId } : {}),

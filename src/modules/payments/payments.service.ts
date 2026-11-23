@@ -206,6 +206,9 @@ export class PaymentsService {
       if (scope.tenantId && lease.tenantId !== scope.tenantId) {
         throw new ForbiddenException('Cross-tenant access denied');
       }
+      if (scope.operatorId && lease.operatorId !== scope.operatorId) {
+        throw new ForbiddenException('Cross-operator access denied');
+      }
       if (lease.status !== LeaseStatus.ACTIVE) {
         throw new BadRequestException(`Lease #${dto.targetId} is ${lease.status}`);
       }

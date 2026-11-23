@@ -68,6 +68,20 @@ export class PublicPortalController {
     return this.publicPortalService.trackComplaint(ticketNumber);
   }
 
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(
+    UserRole.TENANT,
+    UserRole.SUPERADMIN,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_DERMAGA,
+    UserRole.PETUGAS_RUANGAN,
+  )
+  @Get('complaints/my')
+  findMyComplaints(@CurrentUser() user: AuthenticatedUser) {
+    return this.publicPortalService.findUserComplaints(user.email, user.fullName);
+  }
+
   // ==========================================================================
   // STAFF COMPLAINT MANAGEMENT (Auth + PortScope Protected)
   // ==========================================================================

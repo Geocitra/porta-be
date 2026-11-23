@@ -122,10 +122,27 @@ export class PublicPortalService {
         description: dto.description,
       },
       select: {
+        id: true,
         ticketNumber: true,
+        category: true,
+        subject: true,
         status: true,
         createdAt: true,
       },
+    });
+  }
+
+  async findUserComplaints(email?: string, name?: string) {
+    const conditions: Array<{ reporterEmail?: string; reporterName?: string }> = [];
+    if (email) conditions.push({ reporterEmail: email });
+    if (name) conditions.push({ reporterName: name });
+
+    return this.prisma.complaint.findMany({
+      where: conditions.length > 0 ? { OR: conditions } : undefined,
+      include: {
+        port: { select: { id: true, code: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
     });
   }
 

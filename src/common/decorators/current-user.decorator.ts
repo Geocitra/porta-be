@@ -29,7 +29,11 @@ export interface AuthenticatedUser {
 }
 
 export function isPetugasRole(role: UserRole): boolean {
-  return role === UserRole.PETUGAS_PELABUHAN || role === UserRole.PETUGAS_DERMAGA;
+  return (
+    role === UserRole.PETUGAS_PELABUHAN ||
+    role === UserRole.PETUGAS_DERMAGA ||
+    role === UserRole.PETUGAS_RUANGAN
+  );
 }
 
 export function isKadisRole(role: UserRole): boolean {

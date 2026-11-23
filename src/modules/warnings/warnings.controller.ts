@@ -20,16 +20,18 @@ export class WarningsController {
   @Roles(
     UserRole.SUPERADMIN,
     UserRole.ADMIN_PELABUHAN,
+    UserRole.KEPALA_PELABUHAN,
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
     UserRole.OPERATOR_KAPAL,
+    UserRole.TENANT,
   )
   findAll(@Req() req: { portScope: ScopeFilter }) {
     return this.warningsService.findAll(req.portScope);
   }
 
   @Post()
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
+  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN, UserRole.KEPALA_PELABUHAN, UserRole.BENDAHARA)
   issue(
     @Body() dto: IssueWarningDto,
     @CurrentUser() actor: AuthenticatedUser,

@@ -11,6 +11,7 @@ import {
   GeneralTariffDomain,
   HandoverStatus,
   TerminalClass,
+  UserRole,
   VesselCategory,
 } from '@prisma/client';
 import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
@@ -222,10 +223,27 @@ export class GateTicketingService {
 
   listManifests(scope: ScopeFilter) {
     return this.prisma.vesselManifest.findMany({
-      where: { ...(scope.portId ? { portId: scope.portId } : {}) },
+      where: {
+        ...(scope.portId ? { portId: scope.portId } : {}),
+        ...(scope.operatorId ? { visit: { operatorId: scope.operatorId } } : {}),
+      },
       include: {
-        visit: { select: { id: true, visitNumber: true, vessel: { select: { name: true } } } },
-        ferryRoute: { select: { id: true, destinationName: true } },
+        visit: {
+          select: {
+            id: true,
+            visitNumber: true,
+            operatorId: true,
+            vessel: {
+              select: {
+                id: true,
+                name: true,
+                vesselCategory: true,
+                registrationNumber: true,
+              },
+            },
+          },
+        },
+        ferryRoute: { select: { id: true, destinationName: true, distanceMiles: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -238,6 +256,15 @@ export class GateTicketingService {
     });
     if (!visit || visit.portId !== dto.portId) {
       throw new BadRequestException(`Visit #${dto.visitId} does not belong to port #${dto.portId}`);
+    }
+    if (
+      actor.role === UserRole.OPERATOR_KAPAL &&
+      actor.operatorId &&
+      visit.operatorId !== actor.operatorId
+    ) {
+      throw new ForbiddenException(
+        'Anda tidak memiliki akses untuk membuat manifest kapal milik perusahaan pelayaran lain',
+      );
     }
     if (visit.vessel.vesselCategory === VesselCategory.BARANG) {
       throw new BadRequestException(

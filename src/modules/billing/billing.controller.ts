@@ -51,6 +51,7 @@ export class BillingController {
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
     UserRole.OPERATOR_KAPAL,
+    UserRole.TENANT,
   )
   findInvoices(@Req() req: { portScope: ScopeFilter }) {
     return this.billingService.findInvoices(req.portScope);

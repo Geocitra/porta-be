@@ -226,6 +226,10 @@ export async function seedCargoEquipmentUtilities(
   }
 
   // 3. Utility Meter Readings (Air Bersih)
+  const kiosAsset = await prisma.portAsset.findFirst({
+    where: { assetCode: 'AST-PMK-KIOS-01' },
+  });
+
   const utilityData = [
     {
       readingNumber: 'UTL-PMK-2024-001',
@@ -268,6 +272,7 @@ export async function seedCargoEquipmentUtilities(
     },
     {
       readingNumber: 'UTL-PMK-2024-004',
+      assetId: kiosAsset?.id,
       utilityType: UtilityType.AIR_BERSIH,
       meterStart: 97500.0,
       meterEnd: 102500.0,
@@ -298,6 +303,7 @@ export async function seedCargoEquipmentUtilities(
     await prisma.utilityMeterReading.upsert({
       where: { readingNumber: u.readingNumber },
       update: {
+        assetId: u.assetId,
         meterStart: u.meterStart,
         meterEnd: u.meterEnd,
         volumeConsumed: u.volumeConsumed,
