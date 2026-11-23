@@ -263,8 +263,22 @@ export class VesselsService {
       throw new BadRequestException('rejectionReason is required when rejecting an operator');
     }
 
-    const existing = await this.prisma.shipOperator.findUnique({ where: { id: operatorId } });
+    const existing = await this.prisma.shipOperator.findUnique({
+      where: { id: operatorId },
+      include: { documents: true },
+    });
     if (!existing) throw new NotFoundException(`Operator #${operatorId} not found`);
+
+    if (dto.status === VerificationStatus.VERIFIED) {
+      const companyDocs = (existing.documents || []).filter((d) => !d.vesselId);
+      const hasSiupalOrNib = companyDocs.some((d) => d.category === 'SIUPAL_NIB');
+      const hasNpwp = companyDocs.some((d) => d.category === 'NPWP');
+      if (!hasSiupalOrNib || !hasNpwp) {
+        throw new BadRequestException(
+          'Tidak dapat memverifikasi akun operator kapal karena berkas wajib (SIUPAL/NIB dan NPWP Badan Usaha) belum diunggah oleh operator.',
+        );
+      }
+    }
 
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.shipOperator.update({
@@ -745,15 +759,13 @@ export class VesselsService {
   listPendingContracts(scope: ScopeFilter) {
     return this.prisma.operatorBerthingContract.findMany({
       where: {
-        status: {
-          in: [ContractStatus.PENDING_VERIFICATION, ContractStatus.PENDING_HEAD_OF_PORT],
-        },
         ...(scope.portId ? { portId: scope.portId } : {}),
       },
       include: {
         operator: true,
         port: { select: { id: true, code: true, name: true } },
         reviewedByOfficer: { select: { id: true, fullName: true, role: true } },
+        verifiedBy: { select: { id: true, fullName: true, role: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
