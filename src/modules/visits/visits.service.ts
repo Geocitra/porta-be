@@ -205,22 +205,60 @@ export class VisitsService {
 
     const vessel = await this.prisma.vessel.findUnique({
       where: { id: dto.vesselId },
-      include: { operator: true },
+      include: {
+        operator: true,
+        operatorLinks: {
+          where: { isActive: true },
+          include: { operator: true },
+        },
+      },
     });
     if (!vessel || !vessel.isActive) {
       throw new NotFoundException(`Vessel #${dto.vesselId} not found or inactive`);
     }
 
-    if (scope.operatorId && vessel.operatorId !== scope.operatorId) {
-      throw new ForbiddenException('Cannot create visit for another operator vessel');
+    // Resolve effectiveOperatorId for Many-to-Many Vessel <-> ShipOperator
+    const effectiveOperatorId =
+      scope.operatorId ??
+      dto.operatorId ??
+      vessel.operatorId ??
+      vessel.operatorLinks?.[0]?.operatorId ??
+      null;
+
+    if (!effectiveOperatorId) {
+      throw new BadRequestException(
+        `Kapal "${vessel.name}" belum ditautkan ke perusahaan pelayaran mana pun. Tentukan operatorId terlebih dahulu.`,
+      );
+    }
+
+    const matchingLink = vessel.operatorLinks?.find(
+      (link) => link.operatorId === effectiveOperatorId && link.isActive,
+    );
+    const hasLegacyOwnership = vessel.operatorId === effectiveOperatorId;
+
+    if (scope.operatorId && !matchingLink && !hasLegacyOwnership) {
+      throw new ForbiddenException(
+        `Kapal "${vessel.name}" belum terdaftar pada daftar armada perusahaan Anda. Silakan klaim/tambahkan kapal ini dari Katalog Kapal terlebih dahulu.`,
+      );
+    }
+
+    const effectiveOperator =
+      matchingLink?.operator ??
+      (vessel.operator && vessel.operator.id === effectiveOperatorId ? vessel.operator : null) ??
+      (await this.prisma.shipOperator.findUnique({ where: { id: effectiveOperatorId } }));
+
+    if (!effectiveOperator || !effectiveOperator.isActive) {
+      throw new NotFoundException(
+        `Perusahaan Pelayaran #${effectiveOperatorId} tidak ditemukan atau tidak aktif`,
+      );
     }
 
     let activeContractId: number | null = null;
 
     if (dto.visitOrigin === VisitOrigin.OPERATOR_REQUEST) {
-      if (vessel.operator.verificationStatus !== VerificationStatus.VERIFIED) {
+      if (effectiveOperator.verificationStatus !== VerificationStatus.VERIFIED) {
         throw new ForbiddenException(
-          `Operator "${vessel.operator.name}" belum diverifikasi oleh Petugas Registrasi / Admin Pelabuhan`,
+          `Operator "${effectiveOperator.name}" belum diverifikasi oleh Petugas Registrasi / Admin Pelabuhan`,
         );
       }
       if (vessel.verificationStatus !== VerificationStatus.VERIFIED) {
@@ -228,12 +266,17 @@ export class VisitsService {
           `Kapal "${vessel.name}" belum diverifikasi (Surat Ukur/GT) oleh Petugas Registrasi / Admin Pelabuhan`,
         );
       }
+      if (matchingLink && matchingLink.verificationStatus !== VerificationStatus.VERIFIED) {
+        throw new ForbiddenException(
+          `Klaim armada kapal "${vessel.name}" oleh "${effectiveOperator.name}" masih berstatus ${matchingLink.verificationStatus}. Tunggu verifikasi Petugas Registrasi terlebih dahulu.`,
+        );
+      }
 
       // Gatekeeper: PKS Sandar Kapal (Kontrak Payung) harus aktif dan disetujui Kepala Pelabuhan
       const now = new Date();
       const activeContract = await this.prisma.operatorBerthingContract.findFirst({
         where: {
-          operatorId: vessel.operatorId,
+          operatorId: effectiveOperatorId,
           portId: dto.portId,
           status: ContractStatus.ACTIVE,
           startDate: { lte: now },
@@ -244,7 +287,7 @@ export class VisitsService {
 
       if (!activeContract) {
         throw new ForbiddenException(
-          `Operator "${vessel.operator.name}" belum memiliki Perjanjian Kerja Sama (PKS Sandar Kapal) yang AKTIF dan disahkan Kepala Pelabuhan untuk pelabuhan ini. Pengajuan warta sandar ditolak sampai PKS Sandar disetujui.`,
+          `Operator "${effectiveOperator.name}" belum memiliki Perjanjian Kerja Sama (PKS Sandar Kapal) yang AKTIF dan disahkan Kepala Pelabuhan untuk pelabuhan ini. Pengajuan warta sandar ditolak sampai PKS Sandar disetujui.`,
         );
       }
 
@@ -302,7 +345,7 @@ export class VisitsService {
           visitNumber,
           portId: dto.portId,
           vesselId: vessel.id,
-          operatorId: vessel.operatorId,
+          operatorId: effectiveOperatorId,
           berthingContractId: activeContractId,
           visitOrigin: dto.visitOrigin,
           activityMode: dto.activityMode,

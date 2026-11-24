@@ -1,18 +1,27 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { ContractStatus, VerificationStatus, VesselCategory } from '@prisma/client';
+import {
+  ContractStatus,
+  UserRole,
+  VerificationStatus,
+  VesselCategory,
+  VesselRelationshipType,
+} from '@prisma/client';
 import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ScopeFilter } from '../../common/guards/port-scope.guard';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditLogService } from '../../common/utils/audit-log.service';
 import { DocNumberUtil } from '../../common/utils/doc-number.util';
 import { StorageService, UploadedFilePayload } from '../../common/utils/storage.service';
+import { VesselNormalizationUtil } from '../../common/utils/vessel-normalization.util';
 import {
+  ClaimVesselDto,
   CreateBerthingContractDto,
   CreateOperatorDto,
   CreateVesselDto,
@@ -22,6 +31,7 @@ import {
   UploadDocumentDto,
   VerifyBerthingContractDto,
   VerifyEntityDto,
+  VerifyVesselClaimDto,
 } from './dto/vessels.dto';
 
 export const DOCUMENT_UPLOADED_EVENT = 'document.uploaded';
@@ -43,7 +53,7 @@ export interface DocumentUploadedEvent {
 export interface VesselReverificationRequiredEvent {
   vesselId: number;
   vesselName: string;
-  operatorId: number;
+  operatorId: number | null;
   changedFields: string[];
   actorId: number;
 }
@@ -81,22 +91,46 @@ export class VesselsService {
           include: { documents: true },
           orderBy: { name: 'asc' },
         },
+        vesselLinks: {
+          where: { isActive: true, vessel: { isActive: true } },
+          include: {
+            vessel: { include: { documents: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
       },
       orderBy: { name: 'asc' },
     });
 
-    return operators.map((op) => ({
-      ...op,
-      fleetSummary: {
-        totalVessels: op.vessels.length,
-        verifiedVesselsCount: op.vessels.filter(
-          (v) => v.verificationStatus === VerificationStatus.VERIFIED,
-        ).length,
-        pendingVesselsCount: op.vessels.filter(
-          (v) => v.verificationStatus === VerificationStatus.PENDING,
-        ).length,
-      },
-    }));
+    return operators.map((op) => {
+      const fleetMap = new Map<number, any>();
+      for (const v of op.vessels ?? []) {
+        fleetMap.set(v.id, v);
+      }
+      for (const link of op.vesselLinks ?? []) {
+        if (link.vessel) {
+          fleetMap.set(link.vessel.id, {
+            ...link.vessel,
+            relationshipType: link.relationshipType,
+            claimVerificationStatus: link.verificationStatus,
+          });
+        }
+      }
+      const mergedVessels = Array.from(fleetMap.values());
+      return {
+        ...op,
+        vessels: mergedVessels,
+        fleetSummary: {
+          totalVessels: mergedVessels.length,
+          verifiedVesselsCount: mergedVessels.filter(
+            (v) => v.verificationStatus === VerificationStatus.VERIFIED,
+          ).length,
+          pendingVesselsCount: mergedVessels.filter(
+            (v) => v.verificationStatus === VerificationStatus.PENDING,
+          ).length,
+        },
+      };
+    });
   }
 
   async findOperatorById(operatorId: number, scope: ScopeFilter) {
@@ -112,19 +146,41 @@ export class VesselsService {
           include: { documents: true },
           orderBy: { name: 'asc' },
         },
+        vesselLinks: {
+          where: { isActive: true, vessel: { isActive: true } },
+          include: {
+            vessel: { include: { documents: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
       },
     });
     if (!operator || !operator.isActive) {
       throw new NotFoundException(`Perusahaan Pelayaran #${operatorId} tidak ditemukan`);
     }
+    const fleetMap = new Map<number, any>();
+    for (const v of operator.vessels ?? []) {
+      fleetMap.set(v.id, v);
+    }
+    for (const link of operator.vesselLinks ?? []) {
+      if (link.vessel) {
+        fleetMap.set(link.vessel.id, {
+          ...link.vessel,
+          relationshipType: link.relationshipType,
+          claimVerificationStatus: link.verificationStatus,
+        });
+      }
+    }
+    const mergedVessels = Array.from(fleetMap.values());
     return {
       ...operator,
+      vessels: mergedVessels,
       fleetSummary: {
-        totalVessels: operator.vessels.length,
-        verifiedVesselsCount: operator.vessels.filter(
+        totalVessels: mergedVessels.length,
+        verifiedVesselsCount: mergedVessels.filter(
           (v) => v.verificationStatus === VerificationStatus.VERIFIED,
         ).length,
-        pendingVesselsCount: operator.vessels.filter(
+        pendingVesselsCount: mergedVessels.filter(
           (v) => v.verificationStatus === VerificationStatus.PENDING,
         ).length,
       },
@@ -146,13 +202,24 @@ export class VesselsService {
 
     return this.prisma.vessel.findMany({
       where: {
-        operatorId,
         isActive: true,
         ...(vesselCategory ? { vesselCategory } : {}),
+        OR: [
+          { operatorId },
+          { operatorLinks: { some: { operatorId, isActive: true } } },
+        ],
       },
       include: {
         operator: {
           select: { id: true, name: true, operatorProfile: true, verificationStatus: true },
+        },
+        operatorLinks: {
+          where: { isActive: true },
+          include: {
+            operator: {
+              select: { id: true, name: true, operatorProfile: true, verificationStatus: true },
+            },
+          },
         },
         documents: true,
       },
@@ -295,16 +362,89 @@ export class VesselsService {
     });
   }
 
-  findVessels(scope: ScopeFilter, vesselCategory?: VesselCategory) {
-    return this.prisma.vessel.findMany({
+  /**
+   * Global Independent Vessel Catalog Search (with fuzzy typo-tolerant ranking)
+   * Used by both SUPERADMIN and OPERATOR_KAPAL before claiming or registering a vessel.
+   */
+  async searchVesselCatalog(query?: string, vesselCategory?: VesselCategory) {
+    const vessels = await this.prisma.vessel.findMany({
       where: {
         isActive: true,
-        ...(scope.operatorId ? { operatorId: scope.operatorId } : {}),
         ...(vesselCategory ? { vesselCategory } : {}),
       },
       include: {
         operator: {
           select: { id: true, name: true, operatorProfile: true, verificationStatus: true },
+        },
+        operatorLinks: {
+          where: { isActive: true },
+          include: {
+            operator: {
+              select: { id: true, name: true, operatorProfile: true, verificationStatus: true },
+            },
+          },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    if (!query || !query.trim()) {
+      return vessels;
+    }
+
+    const rawQ = query.trim().toLowerCase();
+    const normRegQ = VesselNormalizationUtil.normalizeRegistrationNumber(query);
+    const normNameQ = VesselNormalizationUtil.normalizeVesselName(query);
+
+    return vessels
+      .map((v) => {
+        const directMatch =
+          v.name.toLowerCase().includes(rawQ) ||
+          v.registrationNumber.toLowerCase().includes(rawQ) ||
+          (v.imoNumber?.toLowerCase().includes(rawQ) ?? false) ||
+          (normRegQ.length >= 3 && v.normalizedRegNumber.includes(normRegQ)) ||
+          (normNameQ.length >= 2 && v.normalizedName.includes(normNameQ));
+
+        const similarityScore = normNameQ
+          ? VesselNormalizationUtil.computeNameSimilarity(normNameQ, v.normalizedName)
+          : 0;
+
+        return {
+          ...v,
+          similarityScore,
+          _matched: directMatch || similarityScore >= 0.65,
+        };
+      })
+      .filter((v) => v._matched)
+      .sort((a, b) => b.similarityScore - a.similarityScore)
+      .map(({ _matched, ...rest }) => rest);
+  }
+
+  findVessels(scope: ScopeFilter, vesselCategory?: VesselCategory) {
+    return this.prisma.vessel.findMany({
+      where: {
+        isActive: true,
+        ...(scope.operatorId
+          ? {
+              OR: [
+                { operatorId: scope.operatorId },
+                { operatorLinks: { some: { operatorId: scope.operatorId, isActive: true } } },
+              ],
+            }
+          : {}),
+        ...(vesselCategory ? { vesselCategory } : {}),
+      },
+      include: {
+        operator: {
+          select: { id: true, name: true, operatorProfile: true, verificationStatus: true },
+        },
+        operatorLinks: {
+          where: { isActive: true },
+          include: {
+            operator: {
+              select: { id: true, name: true, operatorProfile: true, verificationStatus: true },
+            },
+          },
         },
         documents: true,
       },
@@ -317,26 +457,121 @@ export class VesselsService {
     scope: ScopeFilter,
     actor?: AuthenticatedUser,
   ) {
-    if (!dto.operatorId) {
-      throw new BadRequestException('Operator ID is required');
-    }
+    const effectiveOperatorId = scope.operatorId ?? dto.operatorId ?? null;
 
-    if (scope.operatorId && dto.operatorId !== scope.operatorId) {
+    if (scope.operatorId && dto.operatorId && dto.operatorId !== scope.operatorId) {
       throw new ForbiddenException('Cannot register vessel for another operator');
     }
 
-    const operator = await this.prisma.shipOperator.findUnique({ where: { id: dto.operatorId } });
-    if (!operator || !operator.isActive) {
-      throw new NotFoundException(`Operator #${dto.operatorId} not found or inactive`);
+    let linkedOperator: { id: number; name: string } | null = null;
+    if (effectiveOperatorId !== null) {
+      const operator = await this.prisma.shipOperator.findUnique({
+        where: { id: effectiveOperatorId },
+      });
+      if (!operator || !operator.isActive) {
+        throw new NotFoundException(`Operator #${effectiveOperatorId} not found or inactive`);
+      }
+      linkedOperator = { id: operator.id, name: operator.name };
     }
+
+    // Layer 1: Canonical Normalization (Hard Block exact/format duplicates)
+    const normalizedRegNumber = VesselNormalizationUtil.normalizeRegistrationNumber(
+      dto.registrationNumber,
+    );
+    const normalizedImoNumber = VesselNormalizationUtil.normalizeImoNumber(dto.imoNumber);
+    const normalizedName = VesselNormalizationUtil.normalizeVesselName(dto.name);
+
+    if (!normalizedRegNumber || !normalizedName) {
+      throw new BadRequestException('Nama kapal dan nomor registrasi kapal tidak valid.');
+    }
+
+    if (this.prisma.vessel?.findFirst) {
+      const exactDuplicate = await this.prisma.vessel.findFirst({
+        where: {
+          OR: [
+            { normalizedRegNumber },
+            ...(normalizedImoNumber ? [{ normalizedImoNumber }] : []),
+          ],
+        },
+        select: {
+          id: true,
+          name: true,
+          registrationNumber: true,
+          imoNumber: true,
+          grossTonnage: true,
+          vesselCategory: true,
+          verificationStatus: true,
+        },
+      });
+
+      if (exactDuplicate) {
+        throw new ConflictException({
+          statusCode: 409,
+          code: 'DUPLICATE_VESSEL_IDENTITY',
+          message: `Kapal dengan Nomor Registrasi / IMO tersebut sudah terdaftar di Katalog Induk (${exactDuplicate.name} - ${exactDuplicate.registrationNumber}). Silakan klaim/pilih kapal tersebut dari katalog alih-alih membuat data duplikat.`,
+          existingVessel: exactDuplicate,
+        });
+      }
+    }
+
+    // Layer 2: Fuzzy Levenshtein Similarity Typo Detection
+    if (!dto.confirmNotDuplicate && this.prisma.vessel?.findMany) {
+      const activeVessels = await this.prisma.vessel.findMany({
+        where: { isActive: true },
+        select: {
+          id: true,
+          name: true,
+          normalizedName: true,
+          registrationNumber: true,
+          imoNumber: true,
+          grossTonnage: true,
+          vesselCategory: true,
+        },
+      });
+
+      const similarVessels = activeVessels
+        .map((v) => ({
+          ...v,
+          similarityScore: VesselNormalizationUtil.computeNameSimilarity(
+            normalizedName,
+            v.normalizedName || v.name,
+          ),
+        }))
+        .filter((v) =>
+          VesselNormalizationUtil.isPotentialTypoDuplicate(
+            normalizedName,
+            v.normalizedName || v.name,
+          ),
+        )
+        .sort((a, b) => b.similarityScore - a.similarityScore)
+        .slice(0, 5);
+
+      if (similarVessels.length > 0) {
+        throw new ConflictException({
+          statusCode: 409,
+          code: 'POSSIBLE_DUPLICATE_VESSEL',
+          message:
+            'Ditemukan kapal dengan nama sangat mirip di Katalog Induk. Pilih/klaim kapal yang sudah ada jika itu kapal yang sama, atau kirim confirmNotDuplicate=true jika benar-benar kapal fisik berbeda.',
+          similarVessels,
+        });
+      }
+    }
+
+    const isExternalOperator = Boolean(scope.operatorId);
+    const initialVerificationStatus = isExternalOperator
+      ? VerificationStatus.PENDING
+      : VerificationStatus.VERIFIED;
 
     return this.prisma.$transaction(async (tx) => {
       const created = await tx.vessel.create({
         data: {
-          operatorId: dto.operatorId!,
-          registrationNumber: dto.registrationNumber,
-          imoNumber: dto.imoNumber,
-          name: dto.name,
+          operatorId: effectiveOperatorId,
+          registrationNumber: dto.registrationNumber.trim(),
+          normalizedRegNumber,
+          imoNumber: dto.imoNumber?.trim() || null,
+          normalizedImoNumber,
+          name: dto.name.trim(),
+          normalizedName,
           flag: dto.flag ?? 'Indonesia',
           grossTonnage: dto.grossTonnage,
           lengthMeters: dto.lengthMeters,
@@ -344,11 +579,9 @@ export class VesselsService {
           shipType: dto.shipType,
           vesselCategory: dto.vesselCategory,
           shippingCategory: dto.shippingCategory,
-          verificationStatus: scope.operatorId
-            ? VerificationStatus.PENDING
-            : VerificationStatus.VERIFIED,
-          verifiedById: scope.operatorId ? null : (actor?.id ?? null),
-          verifiedAt: scope.operatorId ? null : new Date(),
+          verificationStatus: initialVerificationStatus,
+          verifiedById: isExternalOperator ? null : (actor?.id ?? null),
+          verifiedAt: isExternalOperator ? null : new Date(),
         },
         include: {
           operator: {
@@ -358,23 +591,340 @@ export class VesselsService {
         },
       });
 
+      if (effectiveOperatorId !== null && tx.operatorVessel?.upsert) {
+        await tx.operatorVessel.upsert({
+          where: {
+            operatorId_vesselId: {
+              operatorId: effectiveOperatorId,
+              vesselId: created.id,
+            },
+          },
+          update: {
+            isActive: true,
+            relationshipType: dto.relationshipType ?? VesselRelationshipType.OWNER,
+            verificationStatus: initialVerificationStatus,
+            verifiedById: isExternalOperator ? null : (actor?.id ?? null),
+            verifiedAt: isExternalOperator ? null : new Date(),
+          },
+          create: {
+            operatorId: effectiveOperatorId,
+            vesselId: created.id,
+            relationshipType: dto.relationshipType ?? VesselRelationshipType.OWNER,
+            verificationStatus: initialVerificationStatus,
+            verifiedById: isExternalOperator ? null : (actor?.id ?? null),
+            verifiedAt: isExternalOperator ? null : new Date(),
+          },
+        });
+      }
+
       await this.auditLog.record({
         actorId: actor?.id,
         actorRole: actor?.role,
         portId: actor?.portId,
-        action: 'VESSEL_CREATED_UNDER_OPERATOR',
+        action: linkedOperator ? 'VESSEL_CREATED_UNDER_OPERATOR' : 'GLOBAL_VESSEL_MASTER_CREATED',
         entityName: 'vessels',
         entityId: created.id,
         afterData: {
           vesselId: created.id,
           name: created.name,
-          operatorId: operator.id,
-          operatorName: operator.name,
+          normalizedName: created.normalizedName,
+          operatorId: linkedOperator?.id ?? null,
+          operatorName: linkedOperator?.name ?? null,
         },
         tx,
       });
 
       return created;
+    });
+  }
+
+  /**
+   * Allows a Shipping Company (Operator) to pick/claim an existing vessel from the Global Registry
+   * into their fleet (Many-to-Many via OperatorVessel).
+   */
+  async claimVesselForOperator(
+    operatorId: number,
+    vesselId: number,
+    dto: ClaimVesselDto,
+    file: UploadedFilePayload | undefined,
+    actor: AuthenticatedUser,
+    scope: ScopeFilter,
+  ) {
+    if (scope.operatorId && operatorId !== scope.operatorId) {
+      throw new ForbiddenException('Tidak dapat mengklaim kapal untuk perusahaan pelayaran lain.');
+    }
+
+    const [operator, vessel] = await Promise.all([
+      this.prisma.shipOperator.findUnique({ where: { id: operatorId } }),
+      this.prisma.vessel.findUnique({ where: { id: vesselId } }),
+    ]);
+
+    if (!operator || !operator.isActive) {
+      throw new NotFoundException(`Perusahaan Pelayaran #${operatorId} tidak ditemukan atau nonaktif.`);
+    }
+    if (!vessel || !vessel.isActive) {
+      throw new NotFoundException(`Kapal #${vesselId} tidak ditemukan atau nonaktif.`);
+    }
+
+    let authorizationDocPath: string | null = null;
+    if (file) {
+      authorizationDocPath = await this.storage.saveFile(
+        `operators/${operatorId}/vessel-claims/${vesselId}`,
+        file,
+      );
+    }
+
+    const isExternalOperator = actor.role === UserRole.OPERATOR_KAPAL;
+    const verificationStatus = isExternalOperator
+      ? VerificationStatus.PENDING
+      : VerificationStatus.VERIFIED;
+
+    const claim = await this.prisma.$transaction(async (tx) => {
+      const link = await tx.operatorVessel.upsert({
+        where: { operatorId_vesselId: { operatorId, vesselId } },
+        update: {
+          relationshipType: dto.relationshipType ?? VesselRelationshipType.AGENT,
+          notes: dto.notes ?? null,
+          ...(authorizationDocPath ? { authorizationDocPath } : {}),
+          verificationStatus,
+          rejectionReason: null,
+          verifiedById: isExternalOperator ? null : actor.id,
+          verifiedAt: isExternalOperator ? null : new Date(),
+          isActive: true,
+        },
+        create: {
+          operatorId,
+          vesselId,
+          relationshipType: dto.relationshipType ?? VesselRelationshipType.AGENT,
+          notes: dto.notes ?? null,
+          authorizationDocPath,
+          verificationStatus,
+          verifiedById: isExternalOperator ? null : actor.id,
+          verifiedAt: isExternalOperator ? null : new Date(),
+          isActive: true,
+        },
+        include: {
+          operator: { select: { id: true, name: true } },
+          vessel: true,
+        },
+      });
+
+      await this.auditLog.record({
+        actorId: actor.id,
+        actorRole: actor.role,
+        portId: actor.portId,
+        action: 'OPERATOR_VESSEL_CLAIMED',
+        entityName: 'operator_vessels',
+        entityId: link.id,
+        afterData: {
+          operatorId,
+          vesselId,
+          relationshipType: link.relationshipType,
+          verificationStatus: link.verificationStatus,
+        },
+        tx,
+      });
+
+      return link;
+    });
+
+    return claim;
+  }
+
+  async verifyOperatorVesselClaim(
+    operatorId: number,
+    vesselId: number,
+    dto: VerifyVesselClaimDto,
+    actor: AuthenticatedUser,
+  ) {
+    if (dto.status === VerificationStatus.PENDING) {
+      throw new BadRequestException('Verification status must be VERIFIED or REJECTED');
+    }
+    if (dto.status === VerificationStatus.REJECTED && !dto.rejectionReason) {
+      throw new BadRequestException('rejectionReason is required when rejecting a vessel claim');
+    }
+
+    const existing = await this.prisma.operatorVessel.findUnique({
+      where: { operatorId_vesselId: { operatorId, vesselId } },
+    });
+    if (!existing) {
+      throw new NotFoundException(
+        `Relasi armada Operator #${operatorId} dengan Kapal #${vesselId} tidak ditemukan.`,
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.operatorVessel.update({
+        where: { id: existing.id },
+        data: {
+          verificationStatus: dto.status,
+          rejectionReason: dto.status === VerificationStatus.REJECTED ? dto.rejectionReason : null,
+          verifiedById: actor.id,
+          verifiedAt: new Date(),
+        },
+        include: {
+          operator: { select: { id: true, name: true } },
+          vessel: true,
+        },
+      });
+
+      await this.auditLog.record({
+        actorId: actor.id,
+        actorRole: actor.role,
+        portId: actor.portId,
+        action: `OPERATOR_VESSEL_CLAIM_${dto.status}`,
+        entityName: 'operator_vessels',
+        entityId: existing.id,
+        beforeData: { verificationStatus: existing.verificationStatus },
+        afterData: { verificationStatus: dto.status },
+        reason: dto.rejectionReason,
+        tx,
+      });
+
+      return updated;
+    });
+  }
+
+  async unlinkVesselFromOperator(
+    operatorId: number,
+    vesselId: number,
+    actor: AuthenticatedUser,
+    scope: ScopeFilter,
+  ) {
+    if (scope.operatorId && operatorId !== scope.operatorId) {
+      throw new ForbiddenException('Tidak dapat melepas kapal milik perusahaan lain.');
+    }
+
+    const existing = await this.prisma.operatorVessel.findUnique({
+      where: { operatorId_vesselId: { operatorId, vesselId } },
+    });
+    if (!existing) {
+      throw new NotFoundException(
+        `Relasi armada Operator #${operatorId} dengan Kapal #${vesselId} tidak ditemukan.`,
+      );
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.operatorVessel.update({
+        where: { id: existing.id },
+        data: { isActive: false },
+      });
+
+      await this.auditLog.record({
+        actorId: actor.id,
+        actorRole: actor.role,
+        portId: actor.portId,
+        action: 'OPERATOR_VESSEL_UNLINKED',
+        entityName: 'operator_vessels',
+        entityId: existing.id,
+        beforeData: { isActive: existing.isActive },
+        afterData: { isActive: false },
+        tx,
+      });
+
+      return { message: 'Kapal berhasil dilepas dari daftar armada perusahaan.', link: updated };
+    });
+  }
+
+  /**
+   * SUPERADMIN Governance Tool:
+   * Safely merges a duplicate vessel (sourceVesselId) into the canonical master vessel (targetVesselId),
+   * migrating all OperatorVessel links, ShipVisits, and Documents atomically with zero data loss.
+   */
+  async mergeDuplicateVessel(
+    sourceVesselId: number,
+    targetVesselId: number,
+    actor: AuthenticatedUser,
+  ) {
+    if (actor.role !== UserRole.SUPERADMIN) {
+      throw new ForbiddenException('Hanya SUPERADMIN yang berwenang menggabungkan data duplikat kapal.');
+    }
+    if (sourceVesselId === targetVesselId) {
+      throw new BadRequestException('sourceVesselId dan targetVesselId tidak boleh sama.');
+    }
+
+    const [source, target] = await Promise.all([
+      this.prisma.vessel.findUnique({ where: { id: sourceVesselId } }),
+      this.prisma.vessel.findUnique({ where: { id: targetVesselId } }),
+    ]);
+
+    if (!source) throw new NotFoundException(`Kapal sumber #${sourceVesselId} tidak ditemukan.`);
+    if (!target || !target.isActive) {
+      throw new NotFoundException(`Kapal target #${targetVesselId} tidak ditemukan atau tidak aktif.`);
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const sourceLinks = await tx.operatorVessel.findMany({
+        where: { vesselId: sourceVesselId },
+      });
+
+      for (const link of sourceLinks) {
+        const existsOnTarget = await tx.operatorVessel.findUnique({
+          where: {
+            operatorId_vesselId: { operatorId: link.operatorId, vesselId: targetVesselId },
+          },
+        });
+        if (!existsOnTarget) {
+          await tx.operatorVessel.create({
+            data: {
+              operatorId: link.operatorId,
+              vesselId: targetVesselId,
+              relationshipType: link.relationshipType,
+              verificationStatus: link.verificationStatus,
+              authorizationDocPath: link.authorizationDocPath,
+              notes: link.notes,
+              verifiedById: link.verifiedById,
+              verifiedAt: link.verifiedAt,
+              isActive: link.isActive,
+            },
+          });
+        }
+        await tx.operatorVessel.update({
+          where: { id: link.id },
+          data: { isActive: false },
+        });
+      }
+
+      await tx.shipVisit.updateMany({
+        where: { vesselId: sourceVesselId },
+        data: { vesselId: targetVesselId },
+      });
+
+      await tx.document.updateMany({
+        where: { vesselId: sourceVesselId },
+        data: { vesselId: targetVesselId },
+      });
+
+      const archivedSuffix = `MERGED-${sourceVesselId}-${Date.now()}`;
+      await tx.vessel.update({
+        where: { id: sourceVesselId },
+        data: {
+          isActive: false,
+          registrationNumber: `${source.registrationNumber}-${archivedSuffix}`.slice(0, 60),
+          normalizedRegNumber: `${source.normalizedRegNumber}${archivedSuffix}`.slice(0, 80),
+          imoNumber: source.imoNumber ? `${source.imoNumber}-${archivedSuffix}`.slice(0, 30) : null,
+          normalizedImoNumber: source.normalizedImoNumber
+            ? `${source.normalizedImoNumber}${archivedSuffix}`.slice(0, 40)
+            : null,
+        },
+      });
+
+      await this.auditLog.record({
+        actorId: actor.id,
+        actorRole: actor.role,
+        action: 'VESSEL_DUPLICATE_MERGED',
+        entityName: 'vessels',
+        entityId: targetVesselId,
+        beforeData: { sourceVesselId, sourceName: source.name, sourceReg: source.registrationNumber },
+        afterData: { targetVesselId, targetName: target.name, targetReg: target.registrationNumber },
+        tx,
+      });
+
+      return {
+        message: `Kapal duplikat "${source.name}" (#${sourceVesselId}) berhasil digabungkan ke "${target.name}" (#${targetVesselId}).`,
+        targetVesselId,
+        migratedOperatorLinksCount: sourceLinks.length,
+      };
     });
   }
 
@@ -386,11 +936,51 @@ export class VesselsService {
   ) {
     const existing = await this.prisma.vessel.findUnique({ where: { id: vesselId } });
     if (!existing) throw new NotFoundException(`Vessel #${vesselId} not found`);
-    if (scope?.operatorId && existing.operatorId !== scope.operatorId) {
-      throw new ForbiddenException('Cannot update vessel of another operator');
+
+    if (scope?.operatorId) {
+      const hasLegacyOwnership = existing.operatorId === scope.operatorId;
+      const activeLinks = this.prisma.operatorVessel?.findMany
+        ? await this.prisma.operatorVessel.findMany({
+            where: { vesselId, isActive: true },
+          })
+        : [];
+      const hasOperatorLink = activeLinks.some((l) => l.operatorId === scope.operatorId);
+
+      if (!hasLegacyOwnership && !hasOperatorLink) {
+        throw new ForbiddenException('Cannot update vessel of another operator');
+      }
+
+      // Protect shared VERIFIED vessels: if more than 1 company operates this vessel,
+      // only SUPERADMIN or PETUGAS_REGISTRASI_KONTRAK may alter its global technical specs.
+      const distinctOperatorIds = new Set<number>(activeLinks.map((l) => l.operatorId));
+      if (existing.operatorId) distinctOperatorIds.add(existing.operatorId);
+
+      if (
+        existing.verificationStatus === VerificationStatus.VERIFIED &&
+        distinctOperatorIds.size > 1
+      ) {
+        throw new ForbiddenException(
+          'Kapal ini berstatus VERIFIED dan digunakan bersama oleh beberapa perusahaan pelayaran. Perubahan spesifikasi teknis kapal global hanya dapat dilakukan oleh SUPERADMIN atau Petugas Registrasi.',
+        );
+      }
     }
 
     const sanitizedData: Record<string, unknown> = { ...dto };
+    if (dto.name !== undefined) {
+      sanitizedData.name = dto.name.trim();
+      sanitizedData.normalizedName = VesselNormalizationUtil.normalizeVesselName(dto.name);
+    }
+    if (dto.registrationNumber !== undefined) {
+      sanitizedData.registrationNumber = dto.registrationNumber.trim();
+      sanitizedData.normalizedRegNumber = VesselNormalizationUtil.normalizeRegistrationNumber(
+        dto.registrationNumber,
+      );
+    }
+    if (dto.imoNumber !== undefined) {
+      sanitizedData.imoNumber = dto.imoNumber?.trim() || null;
+      sanitizedData.normalizedImoNumber = VesselNormalizationUtil.normalizeImoNumber(dto.imoNumber);
+    }
+
     const changedTechnicalFields: string[] = [];
     let requiresReverification = false;
 
@@ -510,6 +1100,23 @@ export class VesselsService {
         },
       });
 
+      // Sinkronkan juga status klaim awal milik operator pendaftar (jika masih PENDING)
+      if (existing.operatorId !== null && tx.operatorVessel?.updateMany) {
+        await tx.operatorVessel.updateMany({
+          where: {
+            vesselId,
+            operatorId: existing.operatorId,
+            verificationStatus: VerificationStatus.PENDING,
+          },
+          data: {
+            verificationStatus: dto.status,
+            rejectionReason: dto.status === VerificationStatus.REJECTED ? dto.rejectionReason : null,
+            verifiedAt: new Date(),
+            verifiedById: actor.id,
+          },
+        });
+      }
+
       await this.auditLog.record({
         actorId: actor.id,
         actorRole: actor.role,
@@ -592,18 +1199,32 @@ export class VesselsService {
   ) {
     if (!file) throw new BadRequestException('Document file is required');
 
-    const vessel = await this.prisma.vessel.findUnique({ where: { id: vesselId } });
+    const vessel = await this.prisma.vessel.findUnique({
+      where: { id: vesselId },
+      include: {
+        operatorLinks: {
+          where: { isActive: true },
+          select: { operatorId: true },
+        },
+      },
+    });
     if (!vessel) throw new NotFoundException(`Vessel #${vesselId} not found`);
-    if (scope.operatorId && vessel.operatorId !== scope.operatorId) {
+
+    const hasLinkAccess =
+      !scope.operatorId ||
+      vessel.operatorId === scope.operatorId ||
+      (vessel.operatorLinks ?? []).some((link) => link.operatorId === scope.operatorId);
+    if (!hasLinkAccess) {
       throw new ForbiddenException('Cannot upload document for another operator vessel');
     }
 
+    const effectiveOperatorId = scope.operatorId ?? vessel.operatorId ?? null;
     const filePath = await this.storage.saveFile(`vessels/${vesselId}`, file);
 
     const doc = await this.prisma.$transaction(async (tx) => {
       const created = await tx.document.create({
         data: {
-          operatorId: vessel.operatorId,
+          operatorId: effectiveOperatorId,
           vesselId: vessel.id,
           category: dto.category,
           documentNumber: dto.documentNumber,
@@ -632,7 +1253,7 @@ export class VesselsService {
     this.eventEmitter.emit(DOCUMENT_UPLOADED_EVENT, {
       documentId: doc.id,
       category: doc.category,
-      operatorId: vessel.operatorId,
+      operatorId: effectiveOperatorId ?? undefined,
       vesselId: vessel.id,
       uploadedById: actor.id,
       portId: actor.portId,

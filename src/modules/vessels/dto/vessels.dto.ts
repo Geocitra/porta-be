@@ -7,6 +7,7 @@ import {
   ShippingCategory,
   VerificationStatus,
   VesselCategory,
+  VesselRelationshipType,
 } from '@prisma/client';
 import {
   IsBoolean,
@@ -107,6 +108,51 @@ export class CreateVesselDto {
   @IsNumber()
   @Min(0.5)
   draftMeters?: number;
+
+  @ApiPropertyOptional({
+    enum: VesselRelationshipType,
+    default: VesselRelationshipType.OWNER,
+    description: 'Jenis relasi jika kapal langsung ditautkan ke suatu operator',
+  })
+  @IsOptional()
+  @IsEnum(VesselRelationshipType)
+  relationshipType?: VesselRelationshipType;
+
+  @ApiPropertyOptional({
+    example: false,
+    description:
+      'Set true jika pengguna sudah memeriksa peringatan kemiripan nama (fuzzy duplicate) dan memastikan ini kapal fisik yang berbeda.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  confirmNotDuplicate?: boolean;
+}
+
+export class ClaimVesselDto {
+  @ApiPropertyOptional({
+    enum: VesselRelationshipType,
+    default: VesselRelationshipType.AGENT,
+    description: 'Status hubungan perusahaan terhadap kapal (OWNER / AGENT / CHARTERER)',
+  })
+  @IsOptional()
+  @IsEnum(VesselRelationshipType)
+  relationshipType?: VesselRelationshipType;
+
+  @ApiPropertyOptional({ example: 'Surat Penunjukan Keagenan No. 12/SPK/2026' })
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
+export class VerifyVesselClaimDto {
+  @ApiProperty({ enum: [VerificationStatus.VERIFIED, VerificationStatus.REJECTED] })
+  @IsEnum(VerificationStatus)
+  status!: VerificationStatus;
+
+  @ApiPropertyOptional({ example: 'Surat penunjukan keagenan valid dan sesuai.' })
+  @IsOptional()
+  @IsString()
+  rejectionReason?: string;
 }
 
 export class UploadDocumentDto {

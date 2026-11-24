@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseEnumPipe,
@@ -14,7 +15,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBearerAuth, ApiConsumes, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { UserRole, VesselCategory } from '@prisma/client';
 import { ROLE_GROUPS } from '../../common/authz/role-taxonomy';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -23,6 +24,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PortScopeGuard, ScopeFilter } from '../../common/guards/port-scope.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import {
+  ClaimVesselDto,
   CreateBerthingContractDto,
   CreateOperatorDto,
   CreateVesselDto,
@@ -32,6 +34,7 @@ import {
   UploadDocumentDto,
   VerifyBerthingContractDto,
   VerifyEntityDto,
+  VerifyVesselClaimDto,
 } from './dto/vessels.dto';
 import { VesselsService } from './vessels.service';
 
@@ -67,7 +70,6 @@ export class OperatorsController {
   @Roles(
     UserRole.PETUGAS_REGISTRASI_KONTRAK,
     UserRole.PETUGAS_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
   )
   reviewContract(
     @Param('contractId', ParseIntPipe) contractId: number,
@@ -105,7 +107,6 @@ export class OperatorsController {
   @Post(':id/contracts')
   @Roles(
     UserRole.PETUGAS_REGISTRASI_KONTRAK,
-    UserRole.ADMIN_PELABUHAN,
     UserRole.OPERATOR_KAPAL,
   )
   @ApiConsumes('multipart/form-data')
@@ -187,7 +188,11 @@ export class OperatorsController {
   }
 
   @Post(':id/vessels')
-  @Roles(...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS, UserRole.OPERATOR_KAPAL)
+  @Roles(
+    UserRole.SUPERADMIN,
+    ...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS,
+    UserRole.OPERATOR_KAPAL,
+  )
   createVesselForOperator(
     @Param('id', ParseIntPipe) operatorId: number,
     @Body() dto: CreateVesselDto,
@@ -195,6 +200,74 @@ export class OperatorsController {
     @CurrentUser() actor: AuthenticatedUser,
   ) {
     return this.vesselsService.createVessel({ ...dto, operatorId }, req.portScope, actor);
+  }
+
+  @Post(':id/vessels/:vesselId/claim')
+  @Roles(
+    UserRole.SUPERADMIN,
+    ...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS,
+    UserRole.OPERATOR_KAPAL,
+  )
+  @ApiOperation({
+    summary:
+      'Claim/associate an existing vessel from the Global Vessel Catalog to a shipping company fleet (Many-to-Many)',
+  })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file'))
+  claimVesselForOperator(
+    @Param('id', ParseIntPipe) operatorId: number,
+    @Param('vesselId', ParseIntPipe) vesselId: number,
+    @Body() dto: ClaimVesselDto,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.vesselsService.claimVesselForOperator(
+      operatorId,
+      vesselId,
+      dto,
+      file,
+      actor,
+      req.portScope,
+    );
+  }
+
+  @Patch(':id/vessels/:vesselId/verify')
+  @Roles(UserRole.SUPERADMIN, ...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS)
+  @ApiOperation({
+    summary: 'Verify or reject a shipping company claim/association on a vessel',
+  })
+  verifyVesselClaim(
+    @Param('id', ParseIntPipe) operatorId: number,
+    @Param('vesselId', ParseIntPipe) vesselId: number,
+    @Body() dto: VerifyVesselClaimDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.vesselsService.verifyOperatorVesselClaim(operatorId, vesselId, dto, actor);
+  }
+
+  @Delete(':id/vessels/:vesselId')
+  @Roles(
+    UserRole.SUPERADMIN,
+    ...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS,
+    UserRole.OPERATOR_KAPAL,
+  )
+  @ApiOperation({
+    summary:
+      'Unlink/remove a vessel from a shipping company fleet without deleting the Global Vessel Master record',
+  })
+  unlinkVesselFromOperator(
+    @Param('id', ParseIntPipe) operatorId: number,
+    @Param('vesselId', ParseIntPipe) vesselId: number,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.vesselsService.unlinkVesselFromOperator(
+      operatorId,
+      vesselId,
+      actor,
+      req.portScope,
+    );
   }
 
   @Post(':id/documents')
@@ -275,6 +348,58 @@ export class VesselsController {
     return this.vesselsService.uploadOperatorDocument(id, dto, file, actor, req.portScope);
   }
 
+  @Post('operators/:id/vessels/:vesselId/claim')
+  @Roles(
+    UserRole.SUPERADMIN,
+    ...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS,
+    UserRole.OPERATOR_KAPAL,
+  )
+  @ApiConsumes('multipart/form-data', 'application/json')
+  @UseInterceptors(FileInterceptor('file'))
+  claimVesselForOperatorAlias(
+    @Param('id', ParseIntPipe) operatorId: number,
+    @Param('vesselId', ParseIntPipe) vesselId: number,
+    @Body() dto: ClaimVesselDto,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.vesselsService.claimVesselForOperator(
+      operatorId,
+      vesselId,
+      dto,
+      file,
+      actor,
+      req.portScope,
+    );
+  }
+
+  @Patch('operators/:id/vessels/:vesselId/verify')
+  @Roles(UserRole.SUPERADMIN, ...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS)
+  verifyOperatorVesselClaimAlias(
+    @Param('id', ParseIntPipe) operatorId: number,
+    @Param('vesselId', ParseIntPipe) vesselId: number,
+    @Body() dto: VerifyVesselClaimDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.vesselsService.verifyOperatorVesselClaim(operatorId, vesselId, dto, actor);
+  }
+
+  @Delete('operators/:id/vessels/:vesselId')
+  @Roles(
+    UserRole.SUPERADMIN,
+    ...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS,
+    UserRole.OPERATOR_KAPAL,
+  )
+  unlinkVesselFromOperatorAlias(
+    @Param('id', ParseIntPipe) operatorId: number,
+    @Param('vesselId', ParseIntPipe) vesselId: number,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.vesselsService.unlinkVesselFromOperator(operatorId, vesselId, actor, req.portScope);
+  }
+
   @Get('operators/:id/contracts')
   @Roles(
     ...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS,
@@ -291,7 +416,6 @@ export class VesselsController {
   @Post('operators/:id/contracts')
   @Roles(
     UserRole.PETUGAS_REGISTRASI_KONTRAK,
-    UserRole.ADMIN_PELABUHAN,
     UserRole.OPERATOR_KAPAL,
   )
   @ApiConsumes('multipart/form-data')
@@ -316,7 +440,6 @@ export class VesselsController {
   @Roles(
     UserRole.PETUGAS_REGISTRASI_KONTRAK,
     UserRole.PETUGAS_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
   )
   reviewContractAlias(
     @Param('contractId', ParseIntPipe) contractId: number,
@@ -336,6 +459,45 @@ export class VesselsController {
     @Req() req: { portScope: ScopeFilter },
   ) {
     return this.vesselsService.verifyContract(contractId, dto, actor, req.portScope);
+  }
+
+  @Get('catalog')
+  @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.KEPALA_DINAS,
+    UserRole.KEPALA_BIDANG,
+    ...ROLE_GROUPS.ALL_FIELD_OFFICERS,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.KEPALA_PELABUHAN,
+    UserRole.DISHUB_EKSEKUTIF,
+    UserRole.OPERATOR_KAPAL,
+  )
+  @ApiOperation({
+    summary:
+      'Search Global Independent Vessel Catalog (typo-tolerant fuzzy ranking) before claiming or creating a vessel',
+  })
+  @ApiQuery({ name: 'q', required: false, type: String })
+  @ApiQuery({ name: 'vesselCategory', enum: VesselCategory, required: false })
+  searchCatalog(
+    @Query('q') q?: string,
+    @Query('vesselCategory', new ParseEnumPipe(VesselCategory, { optional: true }))
+    vesselCategory?: VesselCategory,
+  ) {
+    return this.vesselsService.searchVesselCatalog(q, vesselCategory);
+  }
+
+  @Post(':sourceId/merge-into/:targetId')
+  @Roles(UserRole.SUPERADMIN)
+  @ApiOperation({
+    summary:
+      'SUPERADMIN Governance: Merge a duplicate vessel into the canonical target vessel with zero data loss',
+  })
+  mergeDuplicateVessel(
+    @Param('sourceId', ParseIntPipe) sourceId: number,
+    @Param('targetId', ParseIntPipe) targetId: number,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.vesselsService.mergeDuplicateVessel(sourceId, targetId, actor);
   }
 
   @Get()
@@ -359,7 +521,15 @@ export class VesselsController {
   }
 
   @Post()
-  @Roles(...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS, UserRole.OPERATOR_KAPAL)
+  @Roles(
+    UserRole.SUPERADMIN,
+    ...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS,
+    UserRole.OPERATOR_KAPAL,
+  )
+  @ApiOperation({
+    summary:
+      'Create a vessel in the Global Registry (SUPERADMIN can create without operatorId; includes 3-Layer Anti-Typo & Anti-Duplicate Engine)',
+  })
   createVessel(
     @Body() dto: CreateVesselDto,
     @Req() req: { portScope: ScopeFilter },
@@ -369,7 +539,11 @@ export class VesselsController {
   }
 
   @Patch(':id')
-  @Roles(...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS, UserRole.OPERATOR_KAPAL)
+  @Roles(
+    UserRole.SUPERADMIN,
+    ...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS,
+    UserRole.OPERATOR_KAPAL,
+  )
   updateVessel(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateVesselDto,

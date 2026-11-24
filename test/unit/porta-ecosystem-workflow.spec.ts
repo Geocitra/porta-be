@@ -1483,4 +1483,166 @@ describe('PORTA Master Restructuring — 20+ Mandatory Scenarios (Hierarchy, Ass
       'cargo:handling:record',
     ]);
   });
+
+  // ==========================================================================
+  // SCENARIO 29–33: Global Independent Vessel Registry, Many-to-Many OperatorVessel & Anti-Typo Engine
+  // ==========================================================================
+
+  it('Scenario 29 & 30: SUPERADMIN creates Global Master Vessel without operatorId, and two different companies (PT A & PT B) claim the same vessel via OperatorVessel without duplicating the vessel', async () => {
+    const claimedLinks: any[] = [];
+    const mockPrisma: any = {
+      shipOperator: {
+        findUnique: jest.fn().mockImplementation(async ({ where }: any) => ({
+          id: where.id,
+          name: where.id === 10 ? 'PT Pelayaran A' : 'PT Agen B',
+          isActive: true,
+        })),
+      },
+      vessel: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+        findUnique: jest.fn().mockResolvedValue({
+          id: 701,
+          name: 'KM Mimika Nusantara',
+          registrationNumber: 'REG-MMK-701',
+          isActive: true,
+          verificationStatus: VerificationStatus.VERIFIED,
+        }),
+        create: jest.fn().mockImplementation(async ({ data }: any) => ({
+          id: 701,
+          ...data,
+        })),
+      },
+      operatorVessel: {
+        upsert: jest.fn().mockImplementation(async ({ create }: any) => {
+          const link = { id: claimedLinks.length + 1, ...create };
+          claimedLinks.push(link);
+          return link;
+        }),
+      },
+      $transaction: jest.fn(async (cb) => cb(mockPrisma)),
+    };
+
+    const vesselsService = new VesselsService(
+      mockPrisma,
+      {} as any,
+      { record: jest.fn() } as any,
+      new EventEmitter2(),
+    );
+
+    // Scenario 29: SUPERADMIN creates vessel independently (NO operatorId required)
+    const masterVessel = await vesselsService.createVessel(
+      {
+        registrationNumber: 'REG-MMK-701',
+        name: 'KM Mimika Nusantara',
+        grossTonnage: 1200,
+        shipType: 'NIAGA' as any,
+        vesselCategory: VesselCategory.CAMPURAN,
+        shippingCategory: 'DALAM_NEGERI' as any,
+      },
+      {},
+      superadminActor,
+    );
+
+    expect(masterVessel.id).toBe(701);
+    expect(masterVessel.operatorId).toBeNull();
+    expect(masterVessel.normalizedRegNumber).toBe('REGMMK701');
+    expect(masterVessel.normalizedName).toBe('MIMIKA NUSANTARA');
+
+    // Scenario 30: Both PT A (id=10) and PT B (id=20) claim the same vessel #701
+    const claimA = await vesselsService.claimVesselForOperator(
+      10,
+      701,
+      { relationshipType: 'OWNER' as any },
+      undefined,
+      superadminActor,
+      {},
+    );
+    const claimB = await vesselsService.claimVesselForOperator(
+      20,
+      701,
+      { relationshipType: 'AGENT' as any },
+      undefined,
+      superadminActor,
+      {},
+    );
+
+    expect(claimA.operatorId).toBe(10);
+    expect(claimB.operatorId).toBe(20);
+    expect(claimedLinks.length).toBe(2);
+  });
+
+  it('Scenario 31 & 32: Anti-Typo Engine blocks "km. tatamilau" when "KM Tatamailau" exists (409 POSSIBLE_DUPLICATE_VESSEL) and blocks OPERATOR_KAPAL from modifying specs of a shared VERIFIED vessel', async () => {
+    const mockPrisma: any = {
+      vessel: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 1,
+            name: 'KM Tatamailau',
+            normalizedName: 'TATAMAILAU',
+            registrationNumber: 'REG-PELNI-001',
+            imoNumber: '8915641',
+            grossTonnage: 6022,
+            vesselCategory: VesselCategory.PENUMPANG,
+          },
+        ]),
+        findUnique: jest.fn().mockResolvedValue({
+          id: 1,
+          operatorId: 10,
+          name: 'KM Tatamailau',
+          grossTonnage: 6022,
+          verificationStatus: VerificationStatus.VERIFIED,
+        }),
+      },
+      operatorVessel: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 1, operatorId: 10, vesselId: 1, isActive: true },
+          { id: 2, operatorId: 20, vesselId: 1, isActive: true },
+        ]),
+      },
+    };
+
+    const vesselsService = new VesselsService(
+      mockPrisma,
+      {} as any,
+      { record: jest.fn() } as any,
+      new EventEmitter2(),
+    );
+
+    // Scenario 31: Typo "km. tatamilau" must be rejected with ConflictException
+    await expect(
+      vesselsService.createVessel(
+        {
+          registrationNumber: 'REG-NEW-999',
+          name: 'km. tatamilau',
+          grossTonnage: 6000,
+          shipType: 'NIAGA' as any,
+          vesselCategory: VesselCategory.PENUMPANG,
+          shippingCategory: 'DALAM_NEGERI' as any,
+        },
+        {},
+        superadminActor,
+      ),
+    ).rejects.toThrow(ConflictException);
+
+    // Scenario 32: Operator B (id=20) cannot alter grossTonnage of shared VERIFIED vessel
+    const operatorBActor: AuthenticatedUser = {
+      id: 202,
+      email: 'ops@agen-b.co.id',
+      username: 'ops.agenb',
+      fullName: 'Agen B',
+      role: UserRole.OPERATOR_KAPAL,
+      portId: null,
+      operatorId: 20,
+      tenantId: null,
+      mustChangePassword: false,
+    };
+
+    await expect(
+      vesselsService.updateVessel(1, { grossTonnage: 500 }, operatorBActor, {
+        operatorId: 20,
+      }),
+    ).rejects.toThrow(ForbiddenException);
+  });
 });

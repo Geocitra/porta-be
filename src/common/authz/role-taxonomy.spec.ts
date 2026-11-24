@@ -113,9 +113,15 @@ describe('Specialized Officer Role Taxonomy & Domain Isolation', () => {
     expect(isSpecializedOrGeneralPetugasRole(UserRole.SUPERADMIN)).toBe(false);
   });
 
-  it('keeps SUPERADMIN out of all operational ROLE_GROUPS', () => {
+  it('keeps SUPERADMIN out of all operational ROLE_GROUPS and keeps ADMIN_PELABUHAN as pure Checker', () => {
     for (const group of Object.values(ROLE_GROUPS)) {
       expect(group).not.toContain(UserRole.SUPERADMIN);
     }
+    expect(ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS).not.toContain(UserRole.ADMIN_PELABUHAN);
+    expect(ROLE_GROUPS.CARGO_BERTH_OFFICERS).not.toContain(UserRole.ADMIN_PELABUHAN);
+    expect(ROLE_GROUPS.PASSENGER_BERTH_OFFICERS).not.toContain(UserRole.ADMIN_PELABUHAN);
+    expect(ROLE_GROUPS.ALL_BERTH_OFFICERS).not.toContain(UserRole.ADMIN_PELABUHAN);
+    expect(ROLE_GROUPS.ROOM_ASSET_OFFICERS).not.toContain(UserRole.ADMIN_PELABUHAN);
+    expect(ROLE_GROUPS.BILLING_WARNING_OFFICERS).not.toContain(UserRole.ADMIN_PELABUHAN);
   });
 });
