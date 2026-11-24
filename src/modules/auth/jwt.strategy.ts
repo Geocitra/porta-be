@@ -80,6 +80,22 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       );
     }
 
+    const rolePermissions = this.prisma.rolePermission?.findMany
+      ? await this.prisma.rolePermission.findMany({
+          where: { role: user.role },
+          include: { permission: { select: { code: true } } },
+        })
+      : [];
+
+    const effectivePerms = new Set<string>(
+      rolePermissions.map((rp) => rp.permission.code),
+    );
+    for (const assignment of user.assignments) {
+      for (const code of assignment.permissionCodes) {
+        effectivePerms.add(code);
+      }
+    }
+
     return enrichUserWithRoleTaxonomy({
       id: user.id,
       email: user.email,
@@ -92,6 +108,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       tenantId: user.tenantId,
       mustChangePassword: user.mustChangePassword,
       activeAssignments: user.assignments,
+      effectivePermissions: Array.from(effectivePerms),
     });
   }
 }

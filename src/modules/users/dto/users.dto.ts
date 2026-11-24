@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import {
+  IsArray,
   IsBoolean,
   IsEmail,
   IsEnum,
@@ -18,7 +19,11 @@ export class CreateUserDto {
   @IsEmail()
   email!: string;
 
-  @ApiPropertyOptional({ example: 'petugas.poumako' })
+  @ApiPropertyOptional({
+    example: 'petugas.poumako',
+    description:
+      'Opsional. Jika dikosongkan, sistem otomatis men-generate username unik dari nama/role.',
+  })
   @IsOptional()
   @IsString()
   @Matches(USERNAME_REGEX, {
@@ -27,10 +32,15 @@ export class CreateUserDto {
   })
   username?: string;
 
-  @ApiProperty({ example: 'Porta123!' })
+  @ApiPropertyOptional({
+    example: 'Porta123!',
+    description:
+      'Opsional. Jika dikosongkan, sistem otomatis men-generate kata sandi sementara acak (12 karakter) untuk disalin oleh Admin.',
+  })
+  @IsOptional()
   @IsString()
   @MinLength(6)
-  password!: string;
+  password?: string;
 
   @ApiProperty({ example: 'Andi Petugas Pelabuhan' })
   @IsString()
@@ -65,6 +75,15 @@ export class CreateUserDto {
   @IsOptional()
   @IsBoolean()
   mustChangePassword?: boolean;
+
+  @ApiPropertyOptional({
+    example: true,
+    description:
+      'Jika true (default), otomatis membuatkan UserAssignment aktif sesuai tupoksi role pada pelabuhan terkait.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  autoCreateAssignment?: boolean;
 }
 
 export class UpdateUserDto {
@@ -116,13 +135,28 @@ export class UpdateUserStatusDto {
 }
 
 export class ResetUserPasswordDto {
-  @ApiProperty({ example: 'PortaBaru123!' })
+  @ApiPropertyOptional({
+    example: 'PortaBaru123!',
+    description:
+      'Opsional. Jika dikosongkan, sistem otomatis men-generate kata sandi sementara acak untuk disalin dan diberikan kepada pengguna yang lupa kata sandi.',
+  })
+  @IsOptional()
   @IsString()
   @MinLength(6)
-  newPassword!: string;
+  newPassword?: string;
 
   @ApiPropertyOptional({ example: true })
   @IsOptional()
   @IsBoolean()
   mustChangePassword?: boolean;
+}
+
+export class UpdateRolePermissionsDto {
+  @ApiProperty({
+    example: ['registration:operators:verify', 'registration:vessels:verify', 'tasks:execute'],
+    description: 'Daftar kode permission yang diizinkan untuk role tersebut.',
+  })
+  @IsArray()
+  @IsString({ each: true })
+  permissionCodes!: string[];
 }

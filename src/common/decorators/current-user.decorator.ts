@@ -29,6 +29,7 @@ export interface AuthenticatedUser {
   allowedBerthCategories?: BerthServiceCategory[];
   handledTaskTypes?: TaskType[];
   uiCapabilities?: string[];
+  effectivePermissions?: string[];
   portId: number | null;
   divisionId?: number | null;
   operatorId: number | null;

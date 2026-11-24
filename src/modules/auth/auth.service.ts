@@ -241,6 +241,7 @@ export class AuthService {
 
     return {
       accessToken,
+      requirePasswordChange: user.mustChangePassword,
       user: this.toAuthUserPayload(user),
     };
   }
@@ -324,7 +325,13 @@ export class AuthService {
   }
 
   async changeMyPassword(actor: AuthenticatedUser, dto: ChangeMyPasswordDto) {
-    const user = await this.prisma.user.findUnique({ where: { id: actor.id } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: actor.id },
+      include: {
+        operator: { select: { verificationStatus: true } },
+        tenant: { select: { verificationStatus: true } },
+      },
+    });
     if (!user || !user.isActive) {
       throw new NotFoundException('Pengguna tidak ditemukan');
     }
@@ -334,16 +341,26 @@ export class AuthService {
       throw new UnauthorizedException('Kata sandi saat ini salah');
     }
 
+    if (dto.newPassword.trim() === dto.currentPassword.trim()) {
+      throw new BadRequestException(
+        'Kata sandi baru tidak boleh sama dengan kata sandi sementara / kata sandi saat ini.',
+      );
+    }
+
     const passwordHash = await bcrypt.hash(dto.newPassword, 10);
     const now = new Date();
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.user.update({
+    const updatedUser = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.user.update({
         where: { id: user.id },
         data: {
           passwordHash,
           mustChangePassword: false,
           passwordChangedAt: now,
+        },
+        include: {
+          operator: { select: { verificationStatus: true } },
+          tenant: { select: { verificationStatus: true } },
         },
       });
 
@@ -356,6 +373,8 @@ export class AuthService {
         entityId: user.id,
         tx,
       });
+
+      return updated;
     });
 
     const accessToken = await this.jwtService.signAsync({
@@ -366,6 +385,8 @@ export class AuthService {
     return {
       message: 'Kata sandi berhasil diperbarui.',
       accessToken,
+      requirePasswordChange: false,
+      user: this.toAuthUserPayload(updatedUser),
     };
   }
 }
