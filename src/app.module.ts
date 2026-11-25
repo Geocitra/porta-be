@@ -23,6 +23,7 @@ import { UsersModule } from './modules/users/users.module';
 import { VesselsModule } from './modules/vessels/vessels.module';
 import { VisitsModule } from './modules/visits/visits.module';
 import { WarningsModule } from './modules/warnings/warnings.module';
+import { AisModule } from './modules/ais/ais.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { WarningsModule } from './modules/warnings/warnings.module';
     PublicPortalModule,
     ReportsModule,
     PaymentsModule,
+    AisModule,
   ],
 })
 export class AppModule {}

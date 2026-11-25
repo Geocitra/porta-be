@@ -60,6 +60,7 @@ export class ReportsController {
   @Roles(
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
+    UserRole.DISHUB_EKSEKUTIF,
     UserRole.KEPALA_PELABUHAN,
     UserRole.ADMIN_PELABUHAN,
   )

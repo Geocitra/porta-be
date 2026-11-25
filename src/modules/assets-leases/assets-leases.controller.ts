@@ -133,6 +133,7 @@ export class AssetsLeasesController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
+    ...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS,
     ...ROLE_GROUPS.ROOM_ASSET_OFFICERS,
     ...ROLE_GROUPS.BILLING_WARNING_OFFICERS,
     UserRole.DISHUB_EKSEKUTIF,
@@ -154,7 +155,10 @@ export class AssetsLeasesController {
   }
 
   @Post('leases')
-  @Roles(...ROLE_GROUPS.ROOM_ASSET_OFFICERS)
+  @Roles(
+    ...ROLE_GROUPS.ROOM_ASSET_OFFICERS,
+    ...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS,
+  )
   createLease(
     @Body() dto: CreateAssetLeaseDto,
     @CurrentUser() actor: AuthenticatedUser,
@@ -164,7 +168,10 @@ export class AssetsLeasesController {
   }
 
   @Patch('leases/:id/verify-room')
-  @Roles(...ROLE_GROUPS.ROOM_ASSET_OFFICERS)
+  @Roles(
+    ...ROLE_GROUPS.ROOM_ASSET_OFFICERS,
+    ...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS,
+  )
   verifyRoom(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() actor: AuthenticatedUser,
@@ -184,7 +191,10 @@ export class AssetsLeasesController {
   }
 
   @Patch('leases/:id/reject')
-  @Roles(...ROLE_GROUPS.ROOM_ASSET_OFFICERS)
+  @Roles(
+    ...ROLE_GROUPS.ROOM_ASSET_OFFICERS,
+    ...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS,
+  )
   rejectLease(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RejectAssetLeaseDto,

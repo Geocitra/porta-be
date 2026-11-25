@@ -369,6 +369,13 @@ export async function seedMasters(prisma: PrismaClient) {
       operatorId: null,
     },
     {
+      email: 'petugas.registrasi@porta.mimikakab.go.id',
+      fullName: 'Agustina Yoku, S.H. (Petugas Registrasi & Kontrak)',
+      role: UserRole.PETUGAS_REGISTRASI_KONTRAK,
+      portId: pomako.id,
+      operatorId: null,
+    },
+    {
       email: 'petugas.pomako@porta.mimikakab.go.id',
       fullName: 'Yohanes Maturbongs (Petugas Shift Pagi)',
       role: UserRole.PETUGAS_DERMAGA,

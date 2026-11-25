@@ -23,6 +23,7 @@ import { PortScopeGuard, ScopeFilter } from '../../common/guards/port-scope.guar
 import { RolesGuard } from '../../common/guards/roles.guard';
 import {
   ApproveBerthingOverrideDto,
+  ApproveVisitDto,
   CreateVisitDto,
   EndBerthingDto,
   RecordArrivalDto,
@@ -59,7 +60,7 @@ export class VisitsController {
   }
 
   @Get('berthing-overrides/pending')
-  @Roles(...ROLE_GROUPS.ALL_BERTH_OFFICERS)
+  @Roles(...ROLE_GROUPS.ALL_BERTH_OFFICERS, UserRole.PETUGAS_REGISTRASI_KONTRAK)
   findPendingOverrides(@Req() req: { portScope: ScopeFilter }) {
     return this.visitsService.findPendingBerthingOverrides(req.portScope);
   }
@@ -80,7 +81,7 @@ export class VisitsController {
   }
 
   @Get(':id/berthings/check-compatibility')
-  @Roles(...ROLE_GROUPS.ALL_BERTH_OFFICERS)
+  @Roles(...ROLE_GROUPS.ALL_BERTH_OFFICERS, UserRole.PETUGAS_REGISTRASI_KONTRAK)
   @ApiQuery({ name: 'berthId', type: Number, required: true })
   checkCompatibility(
     @Param('id', ParseIntPipe) id: number,
@@ -101,13 +102,14 @@ export class VisitsController {
   }
 
   @Post(':id/approve')
-  @Roles(...ROLE_GROUPS.ALL_BERTH_OFFICERS)
+  @Roles(...ROLE_GROUPS.ALL_BERTH_OFFICERS, UserRole.PETUGAS_REGISTRASI_KONTRAK)
   approveVisit(
     @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ApproveVisitDto,
     @CurrentUser() user: AuthenticatedUser,
     @Req() req: { portScope: ScopeFilter },
   ) {
-    return this.visitsService.approveVisit(id, user, req.portScope);
+    return this.visitsService.approveVisit(id, user, req.portScope, dto);
   }
 
   @Post(':id/arrival')

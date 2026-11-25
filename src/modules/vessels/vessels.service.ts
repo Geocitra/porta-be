@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import {
   BadRequestException,
   ConflictException,
@@ -330,8 +331,22 @@ export class VesselsService {
       throw new BadRequestException('rejectionReason is required when rejecting an operator');
     }
 
-    const existing = await this.prisma.shipOperator.findUnique({ where: { id: operatorId } });
+    const existing = await this.prisma.shipOperator.findUnique({
+      where: { id: operatorId },
+      include: { documents: true },
+    });
     if (!existing) throw new NotFoundException(`Operator #${operatorId} not found`);
+
+    if (dto.status === VerificationStatus.VERIFIED) {
+      const companyDocs = (existing.documents || []).filter((d) => !d.vesselId);
+      const hasSiupalOrNib = companyDocs.some((d) => d.category === 'SIUPAL_NIB');
+      const hasNpwp = companyDocs.some((d) => d.category === 'NPWP');
+      if (!hasSiupalOrNib || !hasNpwp) {
+        throw new BadRequestException(
+          'Tidak dapat memverifikasi akun operator kapal karena berkas wajib (SIUPAL/NIB dan NPWP Badan Usaha) belum diunggah oleh operator.',
+        );
+      }
+    }
 
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.shipOperator.update({
@@ -1366,15 +1381,13 @@ export class VesselsService {
   listPendingContracts(scope: ScopeFilter) {
     return this.prisma.operatorBerthingContract.findMany({
       where: {
-        status: {
-          in: [ContractStatus.PENDING_VERIFICATION, ContractStatus.PENDING_HEAD_OF_PORT],
-        },
         ...(scope.portId ? { portId: scope.portId } : {}),
       },
       include: {
         operator: true,
         port: { select: { id: true, code: true, name: true } },
         reviewedByOfficer: { select: { id: true, fullName: true, role: true } },
+        verifiedBy: { select: { id: true, fullName: true, role: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -1403,21 +1416,24 @@ export class VesselsService {
 
     const nextStatus =
       dto.decision === 'APPROVE'
-        ? ContractStatus.PENDING_HEAD_OF_PORT
+        ? ContractStatus.WAITING_OPERATOR_SIGNATURE
         : ContractStatus.REJECTED;
 
     if (nextStatus === ContractStatus.REJECTED && !dto.notes?.trim()) {
       throw new BadRequestException('Catatan penolakan (notes) wajib diisi jika kontrak ditolak');
     }
 
+    const now = new Date();
     const updated = await this.prisma.$transaction(async (tx) => {
       const res = await tx.operatorBerthingContract.update({
         where: { id: contractId },
         data: {
           status: nextStatus,
           reviewedByOfficerId: actor.id,
-          reviewedByOfficerAt: new Date(),
+          reviewedByOfficerAt: now,
           officerReviewNotes: dto.notes ?? null,
+          draftContractGeneratedAt:
+            nextStatus === ContractStatus.WAITING_OPERATOR_SIGNATURE ? now : null,
           rejectionReason: nextStatus === ContractStatus.REJECTED ? dto.notes : null,
         },
         include: {
@@ -1457,6 +1473,89 @@ export class VesselsService {
     return updated;
   }
 
+  async uploadSignedContract(
+    contractId: number,
+    file: UploadedFilePayload | undefined,
+    actor: AuthenticatedUser,
+    scope: ScopeFilter,
+  ) {
+    const existing = await this.prisma.operatorBerthingContract.findUnique({
+      where: { id: contractId },
+    });
+    if (!existing) {
+      throw new NotFoundException(`Berthing contract #${contractId} not found`);
+    }
+    if (scope.operatorId && existing.operatorId !== scope.operatorId) {
+      throw new ForbiddenException('Cannot upload signed contract for another operator');
+    }
+    if (scope.portId && existing.portId !== scope.portId) {
+      throw new ForbiddenException('Cross-port access denied');
+    }
+    if (existing.status !== ContractStatus.WAITING_OPERATOR_SIGNATURE) {
+      throw new BadRequestException(
+        `Contract #${contractId} is not awaiting signed upload (current: ${existing.status})`,
+      );
+    }
+    if (!file) {
+      throw new BadRequestException('File hasil scan kontrak bertanda tangan basah wajib diunggah');
+    }
+
+    const signedFilePath = await this.storage.saveFile(
+      `contracts/berthing/${existing.operatorId}/signed`,
+      file,
+    );
+    const now = new Date();
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const res = await tx.operatorBerthingContract.update({
+        where: { id: contractId },
+        data: {
+          signedFilePath,
+          signedFileName: file.originalname,
+          signedUploadedAt: now,
+          status: ContractStatus.PENDING_HEAD_OF_PORT,
+        },
+        include: {
+          operator: true,
+          port: true,
+          reviewedByOfficer: { select: { id: true, fullName: true, role: true } },
+          verifiedBy: { select: { id: true, fullName: true, role: true } },
+        },
+      });
+
+      await this.auditLog.record({
+        actorId: actor.id,
+        actorRole: actor.role,
+        portId: existing.portId,
+        action: 'OPERATOR_BERTHING_CONTRACT_SIGNED_UPLOADED',
+        entityName: 'operator_berthing_contracts',
+        entityId: contractId,
+        beforeData: { status: existing.status },
+        afterData: {
+          status: ContractStatus.PENDING_HEAD_OF_PORT,
+          signedFilePath,
+          signedFileName: file.originalname,
+        },
+        tx,
+      });
+
+      return res;
+    });
+
+    this.eventEmitter.emit(BERTHING_CONTRACT_REVIEWED_EVENT, {
+      contractId: updated.id,
+      contractNumber: updated.contractNumber,
+      title: updated.title,
+      operatorId: updated.operatorId,
+      portId: updated.portId,
+      status: updated.status,
+      actorId: actor.id,
+      notes: 'Operator telah mengunggah scan kontrak PKS bertanda tangan basah.',
+    } satisfies BerthingContractEvent);
+
+    return updated;
+  }
+
   async verifyContract(
     contractId: number,
     dto: VerifyBerthingContractDto,
@@ -1472,8 +1571,21 @@ export class VesselsService {
     if (scope.portId && existing.portId !== scope.portId) {
       throw new ForbiddenException('Cross-port access denied');
     }
-    if (
+
+    if (dto.status === ContractStatus.ACTIVE) {
+      if (existing.status !== ContractStatus.PENDING_HEAD_OF_PORT) {
+        throw new BadRequestException(
+          `Contract #${contractId} must be uploaded with operator wet signature before final approval (current: ${existing.status})`,
+        );
+      }
+      if (!dto.signatureData?.trim()) {
+        throw new BadRequestException(
+          'Tanda tangan elektronik Kepala Pelabuhan wajib diisi untuk mengesahkan kontrak PKS Sandar',
+        );
+      }
+    } else if (
       existing.status !== ContractStatus.PENDING_HEAD_OF_PORT &&
+      existing.status !== ContractStatus.WAITING_OPERATOR_SIGNATURE &&
       existing.status !== ContractStatus.PENDING_VERIFICATION
     ) {
       throw new BadRequestException(
@@ -1481,14 +1593,28 @@ export class VesselsService {
       );
     }
 
+    const now = new Date();
+    const headSignatureHash =
+      dto.status === ContractStatus.ACTIVE
+        ? createHash('sha256')
+            .update(
+              `${contractId}|${existing.contractNumber}|${actor.id}|${now.toISOString()}`,
+            )
+            .digest('hex')
+        : null;
+
     const updated = await this.prisma.$transaction(async (tx) => {
       const res = await tx.operatorBerthingContract.update({
         where: { id: contractId },
         data: {
           status: dto.status,
           rejectionReason: dto.status === ContractStatus.REJECTED ? dto.rejectionReason : null,
+          headSignatureData:
+            dto.status === ContractStatus.ACTIVE ? dto.signatureData?.trim() || null : null,
+          headSignatureHash,
+          headSignedAt: dto.status === ContractStatus.ACTIVE ? now : null,
           verifiedById: actor.id,
-          verifiedAt: new Date(),
+          verifiedAt: now,
         },
         include: {
           operator: true,

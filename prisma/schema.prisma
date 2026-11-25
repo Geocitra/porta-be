@@ -265,6 +265,7 @@ enum LeaseStatus {
 
 enum ContractStatus {
   PENDING_VERIFICATION
+  WAITING_OPERATOR_SIGNATURE
   PENDING_HEAD_OF_PORT
   ACTIVE
   REJECTED
@@ -1277,9 +1278,16 @@ model OperatorBerthingContract {
   monthlyQuota        Int            @default(30) @map("monthly_quota")
   usedQuota           Int            @default(0) @map("used_quota")
   dockAllocation      String?        @map("dock_allocation") @db.VarChar(200)
-  filePath            String?        @map("file_path") @db.VarChar(255)
-  fileName            String?        @map("file_name") @db.VarChar(255)
-  status              ContractStatus @default(PENDING_VERIFICATION)
+  filePath                 String?        @map("file_path") @db.VarChar(255)
+  fileName                 String?        @map("file_name") @db.VarChar(255)
+  draftContractGeneratedAt DateTime?      @map("draft_contract_generated_at")
+  signedFilePath           String?        @map("signed_file_path") @db.VarChar(255)
+  signedFileName           String?        @map("signed_file_name") @db.VarChar(255)
+  signedUploadedAt         DateTime?      @map("signed_uploaded_at")
+  headSignatureData        String?        @map("head_signature_data") @db.Text
+  headSignatureHash        String?        @map("head_signature_hash") @db.VarChar(128)
+  headSignedAt             DateTime?      @map("head_signed_at")
+  status                   ContractStatus @default(PENDING_VERIFICATION)
   rejectionReason     String?        @map("rejection_reason") @db.Text
   reviewedByOfficerId Int?           @map("reviewed_by_officer_id")
   reviewedByOfficerAt DateTime?      @map("reviewed_by_officer_at")

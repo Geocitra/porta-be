@@ -100,6 +100,17 @@ export class PortsController {
     return this.portsService.findBerthsByPort(portId, berthServiceCategory, req.portScope);
   }
 
+  @Get(':portId/berths/schedule')
+  @UseGuards(PortScopeGuard)
+  @ApiQuery({ name: 'date', required: false, example: '2026-11-17' })
+  getBerthsSchedule(
+    @Param('portId', ParseIntPipe) portId: number,
+    @Req() req: { portScope: ScopeFilter },
+    @Query('date') date?: string,
+  ) {
+    return this.portsService.getBerthsSchedule(portId, date, req.portScope);
+  }
+
   @Post('berths')
   @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
   @UseGuards(PortScopeGuard)

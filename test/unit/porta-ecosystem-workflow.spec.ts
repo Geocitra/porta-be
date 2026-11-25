@@ -982,9 +982,13 @@ describe('PORTA Master Restructuring — 20+ Mandatory Scenarios (Hierarchy, Ass
       $transaction: jest.fn(async (cb) => cb(mockPrisma)),
     };
 
+    const mockStorage: any = {
+      saveFile: jest.fn(async () => 'uploads/contracts/berthing/10/signed/pks-ttd-basah.pdf'),
+    };
+
     const vesselsService = new VesselsService(
       mockPrisma,
-      {} as any,
+      mockStorage,
       { record: jest.fn() } as any,
       new EventEmitter2(),
     );
@@ -1001,23 +1005,46 @@ describe('PORTA Master Restructuring — 20+ Mandatory Scenarios (Hierarchy, Ass
       mustChangePassword: false,
     };
 
+    const operatorActor: AuthenticatedUser = {
+      id: 401,
+      email: 'operator@mimikashipping.co.id',
+      username: 'mimika.shipping',
+      fullName: 'Operator PT Mimika Shipping',
+      role: UserRole.OPERATOR_KAPAL,
+      portId: 1,
+      operatorId: 10,
+      tenantId: null,
+      mustChangePassword: false,
+    };
+
     const reviewed = await vesselsService.reviewContractByOfficer(
       300,
       { decision: 'APPROVE', notes: 'SIUPAL dan daftar armada lengkap.' },
       petugasRegActor,
       { portId: 1 },
     );
-    expect(reviewed.status).toBe('PENDING_HEAD_OF_PORT');
+    expect(reviewed.status).toBe('WAITING_OPERATOR_SIGNATURE');
     expect(reviewed.reviewedByOfficerId).toBe(petugasRegActor.id);
+    expect(reviewed.draftContractGeneratedAt).toBeTruthy();
+
+    const uploaded = await vesselsService.uploadSignedContract(
+      300,
+      { originalname: 'pks-ttd-basah.pdf', buffer: Buffer.from('pdf') } as any,
+      operatorActor,
+      { operatorId: 10, portId: 1 },
+    );
+    expect(uploaded.status).toBe('PENDING_HEAD_OF_PORT');
+    expect(uploaded.signedFilePath).toBe('uploads/contracts/berthing/10/signed/pks-ttd-basah.pdf');
 
     const verified = await vesselsService.verifyContract(
       300,
-      { status: 'ACTIVE' as any },
+      { status: 'ACTIVE' as any, signatureData: 'data:image/png;base64,iVBORw0KGgo=' },
       kepalaPelabuhanPort1,
       { portId: 1 },
     );
     expect(verified.status).toBe('ACTIVE');
     expect(verified.verifiedById).toBe(kepalaPelabuhanPort1.id);
+    expect(verified.headSignatureHash).toBeTruthy();
   });
 
   it('Scenario 22: Smart Task Routing assigns automatic tasks to the exact specialized officer role (PETUGAS_REGISTRASI_KONTRAK, PETUGAS_DERMAGA_BARANG, PETUGAS_DERMAGA_PENUMPANG, PETUGAS_RUANGAN, PETUGAS_TAGIHAN)', async () => {

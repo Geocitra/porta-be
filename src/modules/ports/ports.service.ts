@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { BerthServiceCategory, PortCategory, Prisma } from '@prisma/client';
+import { BerthApprovalStatus, BerthServiceCategory, PortCategory, Prisma } from '@prisma/client';
 import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ScopeFilter } from '../../common/guards/port-scope.guard';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -204,6 +204,125 @@ export class PortsService {
       },
       orderBy: { code: 'asc' },
     });
+  }
+
+  async getBerthsSchedule(portId: number, dateStr?: string, scope?: ScopeFilter) {
+    const effectivePortId = scope?.portId ?? portId;
+    if (scope?.portId && portId !== scope.portId) {
+      throw new ForbiddenException('Cross-port access denied');
+    }
+
+    const baseDate = dateStr ? new Date(`${dateStr}T00:00:00+09:00`) : new Date();
+    if (Number.isNaN(baseDate.getTime())) {
+      throw new BadRequestException('Format tanggal tidak valid (gunakan YYYY-MM-DD)');
+    }
+
+    const isoDate = dateStr || baseDate.toISOString().slice(0, 10);
+    const dayStart = new Date(`${isoDate}T00:00:00+09:00`);
+    const dayEnd = new Date(`${isoDate}T23:59:59.999+09:00`);
+
+    const berths = await this.prisma.berth.findMany({
+      where: {
+        isActive: true,
+        portId: effectivePortId,
+        ...(scope?.allowedBerthIds ? { id: { in: scope.allowedBerthIds } } : {}),
+      },
+      orderBy: { code: 'asc' },
+    });
+
+    const records = await this.prisma.berthingRecord.findMany({
+      where: {
+        portId: effectivePortId,
+        approvalStatus: { not: BerthApprovalStatus.REJECTED },
+      },
+      include: {
+        visit: {
+          select: {
+            id: true,
+            visitNumber: true,
+            eta: true,
+            etd: true,
+            status: true,
+            vessel: { select: { id: true, name: true } },
+            operator: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+
+    return {
+      portId: effectivePortId,
+      date: isoDate,
+      dayStart: dayStart.toISOString(),
+      dayEnd: dayEnd.toISOString(),
+      berths: berths.map((berth) => {
+        const occupiedSlots = records
+          .filter((r) => r.berthId === berth.id)
+          .map((r) => {
+            const rawStart = r.actualStartAt ?? r.plannedStartAt ?? r.visit.eta;
+            const rawEnd = r.actualEndAt ?? r.plannedEndAt ?? r.visit.etd;
+            return {
+              berthingId: r.id,
+              visitId: r.visitId,
+              visitNumber: r.visit.visitNumber,
+              vesselName: r.visit.vessel?.name ?? `Kapal #${r.visitId}`,
+              operatorName: r.visit.operator?.name ?? '-',
+              startAt: rawStart.toISOString(),
+              endAt: rawEnd.toISOString(),
+              status: r.actualEndAt
+                ? ('COMPLETED' as const)
+                : r.actualStartAt
+                ? ('ACTIVE' as const)
+                : r.approvalStatus === BerthApprovalStatus.PENDING
+                ? ('PENDING_OVERRIDE' as const)
+                : ('PLANNED' as const),
+              _startMs: rawStart.getTime(),
+              _endMs: rawEnd.getTime(),
+            };
+          })
+          .filter((slot) => slot._startMs < dayEnd.getTime() && slot._endMs > dayStart.getTime())
+          .sort((a, b) => a._startMs - b._startMs);
+
+        const freeSlots: Array<{ startAt: string; endAt: string }> = [];
+        let cursorMs = dayStart.getTime();
+        const dayEndMs = dayEnd.getTime();
+
+        for (const slot of occupiedSlots) {
+          const clippedStart = Math.max(slot._startMs, dayStart.getTime());
+          const clippedEnd = Math.min(slot._endMs, dayEndMs);
+          if (clippedStart > cursorMs) {
+            freeSlots.push({
+              startAt: new Date(cursorMs).toISOString(),
+              endAt: new Date(clippedStart).toISOString(),
+            });
+          }
+          if (clippedEnd > cursorMs) {
+            cursorMs = clippedEnd;
+          }
+        }
+
+        if (cursorMs < dayEndMs) {
+          freeSlots.push({
+            startAt: new Date(cursorMs).toISOString(),
+            endAt: new Date(dayEndMs).toISOString(),
+          });
+        }
+
+        return {
+          berth: {
+            id: berth.id,
+            code: berth.code,
+            name: berth.name,
+            authorityType: berth.authorityType,
+            operationalStatus: berth.operationalStatus,
+            berthServiceCategory: berth.berthServiceCategory,
+            maxLengthMeters: berth.maxLengthMeters != null ? Number(berth.maxLengthMeters) : null,
+          },
+          occupiedSlots: occupiedSlots.map(({ _startMs, _endMs, ...rest }) => rest),
+          freeSlots,
+        };
+      }),
+    };
   }
 
   async createBerth(dto: CreateBerthDto, actor?: AuthenticatedUser, scope?: ScopeFilter) {

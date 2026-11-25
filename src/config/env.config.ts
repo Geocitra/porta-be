@@ -7,6 +7,7 @@ export interface AppConfig {
   etmalRoundingMode: 'ROUND_UP' | 'HALF_DAY_GRACE';
   defaultUsdToIdrRate: number;
   exchangeRateCacheTtlMs: number;
+  aisStreamApiKey: string;
 }
 
 export const loadAppConfig = (): AppConfig => {
@@ -33,5 +34,6 @@ export const loadAppConfig = (): AppConfig => {
     etmalRoundingMode: mode === 'HALF_DAY_GRACE' ? 'HALF_DAY_GRACE' : 'ROUND_UP',
     defaultUsdToIdrRate: Number(process.env.DEFAULT_USD_TO_IDR_RATE || 16000),
     exchangeRateCacheTtlMs: Number(process.env.EXCHANGE_RATE_CACHE_TTL_MS || 3600000),
+    aisStreamApiKey: process.env.AISSTREAM_API_KEY || '',
   };
 };
