@@ -1,7 +1,9 @@
 import { Body, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { AllowWhenMustChangePassword } from '../../common/decorators/permissions.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
 import { AuthService } from './auth.service';
 import { ChangeMyPasswordDto, UpdateMyProfileDto } from './dto/account.dto';
 import { LoginDto } from './dto/login.dto';
@@ -28,14 +30,16 @@ export class AuthController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @AllowWhenMustChangePassword()
   @Get('me')
   me(@CurrentUser() user: AuthenticatedUser) {
     return user;
   }
 
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @AllowWhenMustChangePassword()
   @Patch('me/profile')
   updateMyProfile(
     @CurrentUser() user: AuthenticatedUser,
@@ -45,7 +49,8 @@ export class AuthController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @AllowWhenMustChangePassword()
   @Patch('me/password')
   changeMyPassword(
     @CurrentUser() user: AuthenticatedUser,
