@@ -78,6 +78,19 @@ export class OperatorsController {
     return this.vesselsService.reviewContractByOfficer(contractId, dto, actor, req.portScope);
   }
 
+  @Post('contracts/:contractId/upload-signed')
+  @Roles(UserRole.OPERATOR_KAPAL, UserRole.ADMIN_PELABUHAN)
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file'))
+  uploadSignedContract(
+    @Param('contractId', ParseIntPipe) contractId: number,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.vesselsService.uploadSignedContract(contractId, file, actor, req.portScope);
+  }
+
   @Patch('contracts/:contractId/verify')
   @Roles(UserRole.KEPALA_PELABUHAN)
   verifyContract(
@@ -325,6 +338,19 @@ export class VesselsController {
     @Req() req: { portScope: ScopeFilter },
   ) {
     return this.vesselsService.reviewContractByOfficer(contractId, dto, actor, req.portScope);
+  }
+
+  @Post('contracts/:contractId/upload-signed')
+  @Roles(UserRole.OPERATOR_KAPAL, UserRole.ADMIN_PELABUHAN)
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file'))
+  uploadSignedContractAlias(
+    @Param('contractId', ParseIntPipe) contractId: number,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.vesselsService.uploadSignedContract(contractId, file, actor, req.portScope);
   }
 
   @Patch('contracts/:contractId/verify')

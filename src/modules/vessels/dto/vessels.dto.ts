@@ -291,5 +291,10 @@ export class VerifyBerthingContractDto {
   @IsOptional()
   @IsString()
   rejectionReason?: string;
+
+  @ApiPropertyOptional({ description: 'Base64 tanda tangan elektronik Kepala Pelabuhan' })
+  @IsOptional()
+  @IsString()
+  signatureData?: string;
 }
 

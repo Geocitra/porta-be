@@ -57,6 +57,16 @@ export class CreateVisitDto {
   notes?: string;
 }
 
+export class ApproveVisitDto {
+  @ApiPropertyOptional({
+    example: 1,
+    description: 'ID dermaga yang dialokasikan saat persetujuan kunjungan',
+  })
+  @IsOptional()
+  @IsInt()
+  berthId?: number;
+}
+
 export class RecordArrivalDto {
   @ApiProperty({ example: '2026-11-16T08:30:00.000Z' })
   @IsDateString()
