@@ -38,6 +38,7 @@ export class MaintenanceController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
     ...ROLE_GROUPS.ROOM_ASSET_OFFICERS,
     ...ROLE_GROUPS.ALL_BERTH_OFFICERS,
     UserRole.DISHUB_EKSEKUTIF,

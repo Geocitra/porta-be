@@ -61,7 +61,7 @@ export class OperatorsController {
   }
 
   @Get('contracts/pending')
-  @Roles(...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS)
+  @Roles(UserRole.KEPALA_PELABUHAN, ...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS)
   listPendingContracts(@Req() req: { portScope: ScopeFilter }) {
     return this.vesselsService.listPendingContracts(req.portScope);
   }
@@ -106,6 +106,7 @@ export class OperatorsController {
 
   @Get(':id/contracts')
   @Roles(
+    UserRole.KEPALA_PELABUHAN,
     ...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS,
     ...ROLE_GROUPS.ALL_BERTH_OFFICERS,
     UserRole.OPERATOR_KAPAL,
@@ -415,6 +416,7 @@ export class VesselsController {
 
   @Get('operators/:id/contracts')
   @Roles(
+    UserRole.KEPALA_PELABUHAN,
     ...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS,
     ...ROLE_GROUPS.ALL_BERTH_OFFICERS,
     UserRole.OPERATOR_KAPAL,
@@ -444,7 +446,7 @@ export class VesselsController {
   }
 
   @Get('contracts/pending')
-  @Roles(...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS)
+  @Roles(UserRole.KEPALA_PELABUHAN, ...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS)
   listPendingContractsAlias(@Req() req: { portScope: ScopeFilter }) {
     return this.vesselsService.listPendingContracts(req.portScope);
   }

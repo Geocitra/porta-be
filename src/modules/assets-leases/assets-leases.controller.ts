@@ -46,6 +46,7 @@ export class AssetsLeasesController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
     ...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS,
     ...ROLE_GROUPS.ROOM_ASSET_OFFICERS,
     UserRole.PETUGAS_TAGIHAN,
@@ -133,6 +134,7 @@ export class AssetsLeasesController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
     ...ROLE_GROUPS.REGISTRATION_CONTRACT_OFFICERS,
     ...ROLE_GROUPS.ROOM_ASSET_OFFICERS,
     ...ROLE_GROUPS.BILLING_WARNING_OFFICERS,
@@ -181,7 +183,7 @@ export class AssetsLeasesController {
   }
 
   @Patch('leases/:id/approve')
-  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.KEPALA_PELABUHAN)
   approveLease(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() actor: AuthenticatedUser,
@@ -220,6 +222,7 @@ export class AssetsLeasesController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
     ...ROLE_GROUPS.ROOM_ASSET_OFFICERS,
     ...ROLE_GROUPS.BILLING_WARNING_OFFICERS,
     UserRole.TENANT,

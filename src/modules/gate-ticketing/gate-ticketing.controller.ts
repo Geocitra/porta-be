@@ -38,6 +38,7 @@ export class GateTicketingController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
     ...ROLE_GROUPS.PASSENGER_BERTH_OFFICERS,
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
@@ -48,10 +49,10 @@ export class GateTicketingController {
 
   @Post('books')
   @Roles(
-    UserRole.KEPALA_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
     UserRole.BENDAHARA,
     UserRole.PETUGAS_DERMAGA_PENUMPANG,
+    UserRole.PETUGAS_DERMAGA,
+    UserRole.PETUGAS_PELABUHAN,
   )
   createBook(
     @Body() dto: CreateGateTicketBookDto,
@@ -66,6 +67,7 @@ export class GateTicketingController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
     ...ROLE_GROUPS.PASSENGER_BERTH_OFFICERS,
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,
@@ -85,7 +87,7 @@ export class GateTicketingController {
   }
 
   @Post('handovers/:id/close')
-  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN, UserRole.BENDAHARA)
+  @Roles(UserRole.BENDAHARA, UserRole.PETUGAS_DERMAGA_PENUMPANG)
   closeHandover(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CloseGateHandoverDto,
@@ -101,7 +103,7 @@ export class GateTicketingController {
   }
 
   @Post('ferry-routes')
-  @Roles(UserRole.SUPERADMIN, UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.SUPERADMIN)
   createFerryRoute(
     @Body() dto: CreateFerryRouteDto,
     @Req() req: { portScope: ScopeFilter },
@@ -114,6 +116,7 @@ export class GateTicketingController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
     ...ROLE_GROUPS.ALL_BERTH_OFFICERS,
     UserRole.BENDAHARA,
     UserRole.DISHUB_EKSEKUTIF,

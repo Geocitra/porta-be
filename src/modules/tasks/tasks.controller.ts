@@ -184,7 +184,7 @@ export class TasksController {
   }
 
   @Post(':id/attachments')
-  @Roles(...ROLE_GROUPS.ALL_FIELD_OFFICERS, UserRole.ADMIN_PELABUHAN)
+  @Roles(...ROLE_GROUPS.ALL_FIELD_OFFICERS)
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   uploadAttachment(

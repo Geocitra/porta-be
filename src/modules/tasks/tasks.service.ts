@@ -143,7 +143,7 @@ export const DEFAULT_SOP_CHECKLISTS: Record<TaskType, DefaultChecklistSeedItem[]
       code: 'ARRIVAL_CLEARANCE_DOC',
       label: 'Dokumen warta kedatangan kapal telah diperiksa',
       isRequired: true,
-      requiresAttachment: false,
+      requiresAttachment: true,
       applicableVesselCategories: [],
     },
   ],

@@ -112,7 +112,7 @@ export class PortsController {
   }
 
   @Post('berths')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.SUPERADMIN)
   @UseGuards(PortScopeGuard)
   createBerth(
     @Body() dto: CreateBerthDto,
@@ -123,7 +123,7 @@ export class PortsController {
   }
 
   @Patch('berths/:berthId')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.SUPERADMIN)
   @UseGuards(PortScopeGuard)
   updateBerth(
     @Param('berthId', ParseIntPipe) berthId: number,
@@ -144,7 +144,7 @@ export class PortsController {
   }
 
   @Post(':portId/zones')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.SUPERADMIN)
   @UseGuards(PortScopeGuard)
   createZone(
     @Param('portId', ParseIntPipe) portId: number,
@@ -165,7 +165,7 @@ export class PortsController {
   }
 
   @Post(':portId/facilities')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.SUPERADMIN)
   @UseGuards(PortScopeGuard)
   createFacility(
     @Param('portId', ParseIntPipe) portId: number,
@@ -193,7 +193,7 @@ export class TerminalsAndBerthsController {
   }
 
   @Post('terminals')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.SUPERADMIN)
   createTerminal(
     @Body() dto: CreateTerminalDto,
     @CurrentUser() actor: AuthenticatedUser,
@@ -203,7 +203,7 @@ export class TerminalsAndBerthsController {
   }
 
   @Patch('terminals/:id')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.SUPERADMIN)
   updateTerminal(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateTerminalDto,
@@ -230,7 +230,7 @@ export class TerminalsAndBerthsController {
   }
 
   @Post('berths')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.SUPERADMIN)
   createBerth(
     @Body() dto: CreateBerthDto,
     @CurrentUser() actor: AuthenticatedUser,
@@ -240,7 +240,7 @@ export class TerminalsAndBerthsController {
   }
 
   @Patch('berths/:berthId')
-  @Roles(UserRole.SUPERADMIN, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.SUPERADMIN)
   updateBerth(
     @Param('berthId', ParseIntPipe) berthId: number,
     @Body() dto: UpdateBerthDto,

@@ -60,7 +60,7 @@ export class VisitsController {
   }
 
   @Get('berthing-overrides/pending')
-  @Roles(...ROLE_GROUPS.ALL_BERTH_OFFICERS, UserRole.PETUGAS_REGISTRASI_KONTRAK)
+  @Roles(UserRole.KEPALA_PELABUHAN, ...ROLE_GROUPS.ALL_BERTH_OFFICERS, UserRole.PETUGAS_REGISTRASI_KONTRAK)
   findPendingOverrides(@Req() req: { portScope: ScopeFilter }) {
     return this.visitsService.findPendingBerthingOverrides(req.portScope);
   }
@@ -81,7 +81,7 @@ export class VisitsController {
   }
 
   @Get(':id/berthings/check-compatibility')
-  @Roles(...ROLE_GROUPS.ALL_BERTH_OFFICERS, UserRole.PETUGAS_REGISTRASI_KONTRAK)
+  @Roles(UserRole.KEPALA_PELABUHAN, ...ROLE_GROUPS.ALL_BERTH_OFFICERS, UserRole.PETUGAS_REGISTRASI_KONTRAK)
   @ApiQuery({ name: 'berthId', type: Number, required: true })
   checkCompatibility(
     @Param('id', ParseIntPipe) id: number,

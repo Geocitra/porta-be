@@ -19,6 +19,7 @@ import { seedOperationsVisits } from './seeds/06-operations-visits';
 import { seedCargoEquipmentUtilities } from './seeds/07-cargo-equipment-utilities';
 import { seedAdjustmentsReportsComplaints } from './seeds/08-adjustments-reports-complaints';
 import { seedHierarchyAssignmentsAndTasks } from './seeds/09-hierarchy-assignments-tasks';
+import { seedPhase10ReportsAndShiftFlow } from './seeds/10-phase10-reports-shifts-flow';
 import { VesselNormalizationUtil } from '../src/common/utils/vessel-normalization.util';
 
 const prisma = new PrismaClient();
@@ -198,11 +199,27 @@ async function main() {
   }
 
   // Step 10: Organizational Hierarchy, Ecosystem Master, Assignments & Task Workflow
-  await seedHierarchyAssignmentsAndTasks(prisma, {
+  const hierarchyResult = await seedHierarchyAssignmentsAndTasks(prisma, {
     pomakoId: pomako.id,
     pomakoBarangId: pomakoBarang.id,
     pomakoPenumpangId: pomakoPenumpang.id,
   });
+
+  // Step 11: Phase 10 Reports, Per-Item Attachments, Shift Flow & Bottleneck Data
+  await seedPhase10ReportsAndShiftFlow(
+    prisma,
+    {
+      pomakoId: pomako.id,
+      pomakoBarangId: pomakoBarang.id,
+      pomakoPenumpangId: pomakoPenumpang.id,
+    },
+    {
+      adminPortPmkId: hierarchyResult.adminPortPmk.id,
+      kepalaPelabuhanPmkId: hierarchyResult.kepalaPelabuhanPmK.id,
+      petugasDermagaAId: hierarchyResult.petugasDermagaA.id,
+      petugasDermagaBId: hierarchyResult.petugasDermagaB.id,
+    },
+  );
 
   console.log('================================================================');
   console.log('  PORTA Database Seeder Finished Successfully!');

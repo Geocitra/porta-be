@@ -475,7 +475,6 @@ export const ROLE_GROUPS = {
   REGISTRATION_CONTRACT_OFFICERS: [
     UserRole.PETUGAS_REGISTRASI_KONTRAK,
     UserRole.PETUGAS_PELABUHAN,
-    UserRole.KEPALA_PELABUHAN,
   ] as UserRole[],
 
   /**
@@ -486,7 +485,6 @@ export const ROLE_GROUPS = {
     UserRole.PETUGAS_DERMAGA_BARANG,
     UserRole.PETUGAS_DERMAGA,
     UserRole.PETUGAS_PELABUHAN,
-    UserRole.KEPALA_PELABUHAN,
   ] as UserRole[],
 
   /**
@@ -497,7 +495,6 @@ export const ROLE_GROUPS = {
     UserRole.PETUGAS_DERMAGA_PENUMPANG,
     UserRole.PETUGAS_DERMAGA,
     UserRole.PETUGAS_PELABUHAN,
-    UserRole.KEPALA_PELABUHAN,
   ] as UserRole[],
 
   /**
@@ -508,7 +505,6 @@ export const ROLE_GROUPS = {
     UserRole.PETUGAS_DERMAGA_PENUMPANG,
     UserRole.PETUGAS_DERMAGA,
     UserRole.PETUGAS_PELABUHAN,
-    UserRole.KEPALA_PELABUHAN,
   ] as UserRole[],
 
   /**
@@ -517,7 +513,6 @@ export const ROLE_GROUPS = {
   ROOM_ASSET_OFFICERS: [
     UserRole.PETUGAS_RUANGAN,
     UserRole.PETUGAS_PELABUHAN,
-    UserRole.KEPALA_PELABUHAN,
   ] as UserRole[],
 
   /**
@@ -526,7 +521,6 @@ export const ROLE_GROUPS = {
   BILLING_WARNING_OFFICERS: [
     UserRole.PETUGAS_TAGIHAN,
     UserRole.BENDAHARA,
-    UserRole.KEPALA_PELABUHAN,
   ] as UserRole[],
 
   /**
@@ -534,7 +528,6 @@ export const ROLE_GROUPS = {
    */
   TREASURY_OFFICERS: [
     UserRole.BENDAHARA,
-    UserRole.KEPALA_PELABUHAN,
   ] as UserRole[],
 
   /**

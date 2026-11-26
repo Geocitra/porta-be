@@ -142,7 +142,7 @@ export class BillingController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
   @Post('invoices/:id/void')
-  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.BENDAHARA, UserRole.PETUGAS_TAGIHAN)
+  @Roles(UserRole.KEPALA_PELABUHAN)
   voidInvoice(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: VoidInvoiceDto,
@@ -200,6 +200,7 @@ export class BillingController {
     UserRole.SUPERADMIN,
     UserRole.KEPALA_DINAS,
     UserRole.KEPALA_BIDANG,
+    UserRole.KEPALA_PELABUHAN,
     ...ROLE_GROUPS.BILLING_WARNING_OFFICERS,
     UserRole.DISHUB_EKSEKUTIF,
     UserRole.OPERATOR_KAPAL,

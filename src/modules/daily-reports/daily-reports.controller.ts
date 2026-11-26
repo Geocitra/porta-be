@@ -70,10 +70,7 @@ export class DailyReportsController {
   }
 
   @Post()
-  @Roles(
-    UserRole.ADMIN_PELABUHAN,
-    ...ROLE_GROUPS.ALL_FIELD_OFFICERS,
-  )
+  @Roles(...ROLE_GROUPS.ALL_FIELD_OFFICERS)
   create(
     @Body() dto: CreateDailyPortReportDto,
     @CurrentUser() actor: AuthenticatedUser,
@@ -105,7 +102,7 @@ export class DailyReportsController {
   }
 
   @Post(':id/acknowledge')
-  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.KEPALA_DINAS, UserRole.DISHUB_EKSEKUTIF)
   acknowledge(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() actor: AuthenticatedUser,
