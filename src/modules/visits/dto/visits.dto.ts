@@ -20,6 +20,15 @@ export class CreateVisitDto {
   @IsInt()
   vesselId!: number;
 
+  @ApiPropertyOptional({
+    example: 1,
+    description:
+      'Opsional untuk petugas (wajib jika kapal dipakai lebih dari 1 perusahaan pelayaran dan kunjungan dibuat oleh petugas). Untuk OPERATOR_KAPAL otomatis memakai operatorId akunnya.',
+  })
+  @IsOptional()
+  @IsInt()
+  operatorId?: number;
+
   @ApiProperty({ enum: VisitOrigin, default: VisitOrigin.OPERATOR_REQUEST })
   @IsEnum(VisitOrigin)
   visitOrigin!: VisitOrigin;

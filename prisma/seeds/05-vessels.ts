@@ -4,7 +4,9 @@ import {
   ShipType,
   ShippingCategory,
   VerificationStatus,
+  VesselRelationshipType,
 } from '@prisma/client';
+import { VesselNormalizationUtil } from '../../src/common/utils/vessel-normalization.util';
 
 export async function seedVessels(
   prisma: PrismaClient,
@@ -238,12 +240,21 @@ export async function seedVessels(
   const vesselMap = new Map<string, any>();
 
   for (const v of vesselsData) {
+    const normalizedRegNumber = VesselNormalizationUtil.normalizeRegistrationNumber(
+      v.registrationNumber,
+    );
+    const normalizedImoNumber = VesselNormalizationUtil.normalizeImoNumber(v.imoNumber);
+    const normalizedName = VesselNormalizationUtil.normalizeVesselName(v.name);
+
     const vessel = await prisma.vessel.upsert({
       where: { registrationNumber: v.registrationNumber },
       update: {
         operatorId: v.operatorId,
         imoNumber: v.imoNumber,
+        normalizedRegNumber,
+        normalizedImoNumber,
         name: v.name,
+        normalizedName,
         flag: v.flag,
         grossTonnage: v.grossTonnage,
         shipType: v.shipType,
@@ -252,9 +263,36 @@ export async function seedVessels(
       },
       create: {
         ...v,
+        normalizedRegNumber,
+        normalizedImoNumber,
+        normalizedName,
         verificationStatus: VerificationStatus.VERIFIED,
         verifiedAt: new Date('2023-01-20T09:00:00Z'),
         verifiedById: adminUserId,
+      },
+    });
+
+    // Sync Many-to-Many OperatorVessel table
+    await prisma.operatorVessel.upsert({
+      where: {
+        operatorId_vesselId: {
+          operatorId: v.operatorId,
+          vesselId: vessel.id,
+        },
+      },
+      update: {
+        relationshipType: VesselRelationshipType.OWNER,
+        verificationStatus: VerificationStatus.VERIFIED,
+        isActive: true,
+      },
+      create: {
+        operatorId: v.operatorId,
+        vesselId: vessel.id,
+        relationshipType: VesselRelationshipType.OWNER,
+        verificationStatus: VerificationStatus.VERIFIED,
+        verifiedById: adminUserId,
+        verifiedAt: new Date('2023-01-20T09:00:00Z'),
+        isActive: true,
       },
     });
 
@@ -296,6 +334,34 @@ export async function seedVessels(
     }
 
     vesselMap.set(v.registrationNumber, vessel);
+  }
+
+  // Demonstrate Many-to-Many Shared Vessel: PT Pelayaran Mimika Sejahtera acts as local AGENT for KM Tatamailau (owned by PELNI)
+  const tatamailau = vesselMap.get('REG-PELNI-001');
+  if (tatamailau && mimikaOpId) {
+    await prisma.operatorVessel.upsert({
+      where: {
+        operatorId_vesselId: {
+          operatorId: mimikaOpId,
+          vesselId: tatamailau.id,
+        },
+      },
+      update: {
+        relationshipType: VesselRelationshipType.AGENT,
+        verificationStatus: VerificationStatus.VERIFIED,
+        isActive: true,
+      },
+      create: {
+        operatorId: mimikaOpId,
+        vesselId: tatamailau.id,
+        relationshipType: VesselRelationshipType.AGENT,
+        verificationStatus: VerificationStatus.VERIFIED,
+        verifiedById: adminUserId,
+        verifiedAt: new Date('2024-01-10T09:00:00Z'),
+        notes: 'Agen lokal resmi KM Tatamailau di Pelabuhan Poumako',
+        isActive: true,
+      },
+    });
   }
 
   console.log(`Vessels seeded: ${vesselsData.length} active vessels.`);

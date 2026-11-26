@@ -19,6 +19,7 @@ import { seedOperationsVisits } from './seeds/06-operations-visits';
 import { seedCargoEquipmentUtilities } from './seeds/07-cargo-equipment-utilities';
 import { seedAdjustmentsReportsComplaints } from './seeds/08-adjustments-reports-complaints';
 import { seedHierarchyAssignmentsAndTasks } from './seeds/09-hierarchy-assignments-tasks';
+import { VesselNormalizationUtil } from '../src/common/utils/vessel-normalization.util';
 
 const prisma = new PrismaClient();
 
@@ -83,8 +84,11 @@ async function main() {
     create: {
       operatorId: firstOpId,
       registrationNumber: 'REG-PMK-PENDING-01',
+      normalizedRegNumber: VesselNormalizationUtil.normalizeRegistrationNumber('REG-PMK-PENDING-01'),
       imoNumber: 'IMO9876543',
+      normalizedImoNumber: VesselNormalizationUtil.normalizeImoNumber('IMO9876543'),
       name: 'KM Arafura Ekspres (Menunggu Verifikasi)',
+      normalizedName: VesselNormalizationUtil.normalizeVesselName('KM Arafura Ekspres (Menunggu Verifikasi)'),
       flag: 'Indonesia',
       grossTonnage: 420,
       shipType: ShipType.NIAGA,
@@ -159,13 +163,14 @@ async function main() {
 
   // 9d. Sample Ship Visits for Pelabuhan Barang & Pelabuhan Penumpang
   if (firstVessel) {
+    const sampleOpId = firstVessel.operatorId ?? firstOpId;
     await prisma.shipVisit.upsert({
       where: { visitNumber: 'VST-BRG-2026-001' },
       update: {},
       create: {
         portId: pomakoBarang.id,
         vesselId: firstVessel.id,
-        operatorId: firstVessel.operatorId,
+        operatorId: sampleOpId,
         visitNumber: 'VST-BRG-2026-001',
         eta: new Date(Date.now() + 86400000),
         etd: new Date(Date.now() + 3 * 86400000),
@@ -181,7 +186,7 @@ async function main() {
       create: {
         portId: pomakoPenumpang.id,
         vesselId: firstVessel.id,
-        operatorId: firstVessel.operatorId,
+        operatorId: sampleOpId,
         visitNumber: 'VST-PNP-2026-001',
         eta: new Date(Date.now() + 43200000),
         etd: new Date(Date.now() + 2 * 86400000),

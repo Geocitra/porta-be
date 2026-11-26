@@ -173,33 +173,23 @@ export const ROLE_TAXONOMY_MAP: Record<UserRole, RoleTaxonomyDefinition> = {
   },
   [UserRole.ADMIN_PELABUHAN]: {
     role: UserRole.ADMIN_PELABUHAN,
-    roleLabel: 'Admin Pelabuhan (Checker Administrasi)',
+    roleLabel: 'Admin Pelabuhan (Checker Tugas & Laporan Harian)',
     operationalDomain: 'PORT_ADMIN',
-    allowedBerthCategories: [
-      BerthServiceCategory.DERMAGA_BARANG,
-      BerthServiceCategory.DERMAGA_PENUMPANG,
-      BerthServiceCategory.DERMAGA_CAMPURAN,
-    ],
-    handledTaskTypes: [
-      TaskType.DOCUMENT_VERIFICATION,
-      TaskType.COMPANY_REGISTRATION_CHECK,
-      TaskType.GENERAL_OPERATION,
-    ],
+    allowedBerthCategories: [],
+    handledTaskTypes: [],
     defaultPermissions: [
       'port:admin:check',
       'port:tasks:check_admin',
       'port:reports:check_admin',
-      'port:contracts:review',
-      'port:onboarding:verify',
+      'port:assignments:manage',
+      'port:users:manage_officers',
     ],
     uiCapabilities: [
-      'view_port_admin_dashboard',
+      'view_port_admin_checker',
       'check_admin_tasks',
       'check_admin_daily_reports',
-      'manage_operator_registration',
-      'review_berthing_contracts',
-      'manage_visits_admin',
-      'manage_invoices_warnings',
+      'view_daily_obligation_recap',
+      'manage_port_officers',
     ],
   },
   [UserRole.PETUGAS_REGISTRASI_KONTRAK]: {
@@ -485,7 +475,6 @@ export const ROLE_GROUPS = {
   REGISTRATION_CONTRACT_OFFICERS: [
     UserRole.PETUGAS_REGISTRASI_KONTRAK,
     UserRole.PETUGAS_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
     UserRole.KEPALA_PELABUHAN,
   ] as UserRole[],
 
@@ -497,7 +486,6 @@ export const ROLE_GROUPS = {
     UserRole.PETUGAS_DERMAGA_BARANG,
     UserRole.PETUGAS_DERMAGA,
     UserRole.PETUGAS_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
     UserRole.KEPALA_PELABUHAN,
   ] as UserRole[],
 
@@ -509,7 +497,6 @@ export const ROLE_GROUPS = {
     UserRole.PETUGAS_DERMAGA_PENUMPANG,
     UserRole.PETUGAS_DERMAGA,
     UserRole.PETUGAS_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
     UserRole.KEPALA_PELABUHAN,
   ] as UserRole[],
 
@@ -521,7 +508,6 @@ export const ROLE_GROUPS = {
     UserRole.PETUGAS_DERMAGA_PENUMPANG,
     UserRole.PETUGAS_DERMAGA,
     UserRole.PETUGAS_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
     UserRole.KEPALA_PELABUHAN,
   ] as UserRole[],
 
@@ -531,7 +517,6 @@ export const ROLE_GROUPS = {
   ROOM_ASSET_OFFICERS: [
     UserRole.PETUGAS_RUANGAN,
     UserRole.PETUGAS_PELABUHAN,
-    UserRole.ADMIN_PELABUHAN,
     UserRole.KEPALA_PELABUHAN,
   ] as UserRole[],
 
@@ -541,7 +526,6 @@ export const ROLE_GROUPS = {
   BILLING_WARNING_OFFICERS: [
     UserRole.PETUGAS_TAGIHAN,
     UserRole.BENDAHARA,
-    UserRole.ADMIN_PELABUHAN,
     UserRole.KEPALA_PELABUHAN,
   ] as UserRole[],
 

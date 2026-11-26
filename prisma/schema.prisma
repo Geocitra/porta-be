@@ -74,6 +74,12 @@ enum VesselCategory {
   CAMPURAN
 }
 
+enum VesselRelationshipType {
+  OWNER
+  AGENT
+  CHARTERER
+}
+
 enum BerthCompatibilityStatus {
   MATCH
   MISMATCH
@@ -525,6 +531,7 @@ model User {
   verifiedOperators ShipOperator[]   @relation("OperatorVerifiedBy")
   verifiedTenants   Tenant[]         @relation("TenantVerifiedBy")
   verifiedVessels   Vessel[]         @relation("VesselVerifiedBy")
+  verifiedOperatorVessels OperatorVessel[] @relation("OperatorVesselVerifiedBy")
   uploadedDocuments Document[]       @relation("DocumentUploadedBy")
   recordedBerthings  BerthingRecord[] @relation("RecordedBy")
   approvedBerthings  BerthingRecord[] @relation("BerthingApprovedBy")
@@ -627,6 +634,7 @@ model ShipOperator {
   verifiedBy User?      @relation("OperatorVerifiedBy", fields: [verifiedById], references: [id], onDelete: Restrict)
   users      User[]     @relation("OperatorUsers")
   vessels    Vessel[]
+  vesselLinks OperatorVessel[]
   documents  Document[]
   visits     ShipVisit[]
   invoices   Invoice[]
@@ -662,33 +670,63 @@ model Tenant {
 }
 
 model Vessel {
-  id                 Int                @id @default(autoincrement())
-  operatorId         Int                @map("operator_id")
-  registrationNumber String             @unique @map("registration_number") @db.VarChar(60)
-  imoNumber          String?            @unique @map("imo_number") @db.VarChar(30)
-  name               String             @db.VarChar(150)
-  flag               String             @default("Indonesia") @db.VarChar(80)
-  grossTonnage       Decimal            @map("gross_tonnage") @db.Decimal(12, 2)
-  lengthMeters       Decimal?           @map("length_meters") @db.Decimal(8, 2)
-  draftMeters        Decimal?           @map("draft_meters") @db.Decimal(6, 2)
-  shipType           ShipType           @map("ship_type")
-  vesselCategory     VesselCategory     @default(CAMPURAN) @map("vessel_category")
-  shippingCategory   ShippingCategory   @map("shipping_category")
-  verificationStatus VerificationStatus @default(PENDING) @map("verification_status")
-  rejectionReason    String?            @map("rejection_reason") @db.Text
-  verifiedAt         DateTime?          @map("verified_at")
-  verifiedById       Int?               @map("verified_by_id")
-  isActive           Boolean            @default(true) @map("is_active")
-  createdAt          DateTime           @default(now()) @map("created_at")
-  updatedAt          DateTime           @updatedAt @map("updated_at")
+  id                  Int                @id @default(autoincrement())
+  operatorId          Int?               @map("operator_id")
+  registrationNumber  String             @unique @map("registration_number") @db.VarChar(60)
+  normalizedRegNumber String             @unique @map("normalized_reg_number") @db.VarChar(80)
+  imoNumber           String?            @unique @map("imo_number") @db.VarChar(30)
+  normalizedImoNumber String?            @unique @map("normalized_imo_number") @db.VarChar(40)
+  name                String             @db.VarChar(150)
+  normalizedName      String             @map("normalized_name") @db.VarChar(160)
+  flag                String             @default("Indonesia") @db.VarChar(80)
+  grossTonnage        Decimal            @map("gross_tonnage") @db.Decimal(12, 2)
+  lengthMeters        Decimal?           @map("length_meters") @db.Decimal(8, 2)
+  draftMeters         Decimal?           @map("draft_meters") @db.Decimal(6, 2)
+  shipType            ShipType           @map("ship_type")
+  vesselCategory      VesselCategory     @default(CAMPURAN) @map("vessel_category")
+  shippingCategory    ShippingCategory   @map("shipping_category")
+  verificationStatus  VerificationStatus @default(PENDING) @map("verification_status")
+  rejectionReason     String?            @map("rejection_reason") @db.Text
+  verifiedAt          DateTime?          @map("verified_at")
+  verifiedById        Int?               @map("verified_by_id")
+  isActive            Boolean            @default(true) @map("is_active")
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
 
-  operator   ShipOperator @relation(fields: [operatorId], references: [id], onDelete: Restrict)
-  verifiedBy User?        @relation("VesselVerifiedBy", fields: [verifiedById], references: [id], onDelete: Restrict)
-  documents  Document[]
-  visits     ShipVisit[]
+  operator      ShipOperator?    @relation(fields: [operatorId], references: [id], onDelete: SetNull)
+  verifiedBy    User?            @relation("VesselVerifiedBy", fields: [verifiedById], references: [id], onDelete: Restrict)
+  operatorLinks OperatorVessel[]
+  documents     Document[]
+  visits        ShipVisit[]
 
   @@index([operatorId])
+  @@index([normalizedName])
   @@map("vessels")
+}
+
+model OperatorVessel {
+  id                   Int                    @id @default(autoincrement())
+  operatorId           Int                    @map("operator_id")
+  vesselId             Int                    @map("vessel_id")
+  relationshipType     VesselRelationshipType @default(AGENT) @map("relationship_type")
+  verificationStatus   VerificationStatus     @default(PENDING) @map("verification_status")
+  rejectionReason      String?                @map("rejection_reason") @db.Text
+  authorizationDocPath String?                @map("authorization_doc_path") @db.VarChar(255)
+  notes                String?                @db.Text
+  verifiedById         Int?                   @map("verified_by_id")
+  verifiedAt           DateTime?              @map("verified_at")
+  isActive             Boolean                @default(true) @map("is_active")
+  createdAt            DateTime               @default(now()) @map("created_at")
+  updatedAt            DateTime               @updatedAt @map("updated_at")
+
+  operator   ShipOperator @relation(fields: [operatorId], references: [id], onDelete: Restrict)
+  vessel     Vessel       @relation(fields: [vesselId], references: [id], onDelete: Restrict)
+  verifiedBy User?        @relation("OperatorVesselVerifiedBy", fields: [verifiedById], references: [id], onDelete: Restrict)
+
+  @@unique([operatorId, vesselId])
+  @@index([vesselId, isActive])
+  @@index([operatorId, verificationStatus])
+  @@map("operator_vessels")
 }
 
 model Document {
@@ -954,6 +992,7 @@ model DailyPortReport {
   verifiedAt          DateTime?               @map("verified_at")
   headNotes           String?                 @map("head_notes") @db.Text
   summarySnapshot     Json?                   @map("summary_snapshot")
+  domainSummaryJson   Json?                   @map("domain_summary_json")
   createdAt           DateTime                @default(now()) @map("created_at")
   updatedAt           DateTime                @updatedAt @map("updated_at")
 
@@ -1775,7 +1814,8 @@ model TaskChecklistItem {
   adminNotes         String?  @map("admin_notes") @db.Text
   updatedAt          DateTime @updatedAt @map("updated_at")
 
-  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task        Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  attachments TaskAttachment[]
 
   @@unique([taskId, code])
   @@index([taskId, itemOrder])
@@ -1783,21 +1823,24 @@ model TaskChecklistItem {
 }
 
 model TaskAttachment {
-  id           Int      @id @default(autoincrement())
-  taskId       Int      @map("task_id")
-  submissionId Int?     @map("submission_id")
-  fileName     String   @map("file_name") @db.VarChar(255)
-  filePath     String   @map("file_path") @db.VarChar(255)
-  mimeType     String   @map("mime_type") @db.VarChar(100)
-  uploadedById Int      @map("uploaded_by_id")
-  notes        String?  @db.Text
-  createdAt    DateTime @default(now()) @map("created_at")
+  id              Int      @id @default(autoincrement())
+  taskId          Int      @map("task_id")
+  submissionId    Int?     @map("submission_id")
+  checklistItemId Int?     @map("checklist_item_id")
+  fileName        String   @map("file_name") @db.VarChar(255)
+  filePath        String   @map("file_path") @db.VarChar(255)
+  mimeType        String   @map("mime_type") @db.VarChar(100)
+  uploadedById    Int      @map("uploaded_by_id")
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
 
-  task       Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  submission TaskSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
-  uploadedBy User            @relation("TaskAttachmentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  task          Task               @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  submission    TaskSubmission?    @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+  checklistItem TaskChecklistItem? @relation(fields: [checklistItemId], references: [id], onDelete: SetNull)
+  uploadedBy    User               @relation("TaskAttachmentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
 
   @@index([taskId])
+  @@index([checklistItemId])
   @@map("task_attachments")
 }
 
