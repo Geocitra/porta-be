@@ -31,6 +31,28 @@ export class WarningsController {
     return this.warningsService.findAll(req.portScope);
   }
 
+  @Get('overdue-summary')
+  @Roles(
+    UserRole.SUPERADMIN,
+    UserRole.KEPALA_DINAS,
+    UserRole.KEPALA_BIDANG,
+    ...ROLE_GROUPS.BILLING_WARNING_OFFICERS,
+    UserRole.DISHUB_EKSEKUTIF,
+    UserRole.OPERATOR_KAPAL,
+  )
+  getOverdueSummary(@Req() req: { portScope: ScopeFilter }) {
+    return this.warningsService.getOverdueSummary(req.portScope);
+  }
+
+  @Post('auto-escalate')
+  @Roles(...ROLE_GROUPS.BILLING_WARNING_OFFICERS, UserRole.SUPERADMIN)
+  runAutoEscalate(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.warningsService.runOverdueEscalationSweep(actor.id, req.portScope);
+  }
+
   @Post()
   @Roles(...ROLE_GROUPS.BILLING_WARNING_OFFICERS)
   issue(

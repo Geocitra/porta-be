@@ -6,17 +6,21 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
+  BillingStage,
   ChargePaymentStatus,
   InvoiceStatus,
   LeaseStatus,
   PaymentMethod,
+  VisitStatus,
 } from '@prisma/client';
 import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ScopeFilter } from '../../common/guards/port-scope.guard';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuditLogService } from '../../common/utils/audit-log.service';
 import { DecimalUtil } from '../../common/utils/decimal.util';
+import { DocNumberUtil } from '../../common/utils/doc-number.util';
 import {
   CheckoutPaymentDto,
   MidtransWebhookDto,
@@ -28,6 +32,18 @@ import { MidtransProvider } from './providers/midtrans.provider';
 const CONFIG_KEY_ENABLED = 'PAYMENT_GATEWAY_ENABLED';
 const CONFIG_KEY_PROVIDER = 'PAYMENT_GATEWAY_PROVIDER';
 
+export const GATEWAY_PAYMENT_SETTLED_EVENT = 'gateway.payment.settled';
+
+export interface GatewayPaymentSettledEvent {
+  transactionId: number;
+  orderId: string;
+  portId: number;
+  targetType: string;
+  targetId: number;
+  amountIdr: number;
+  payerUserId: number;
+}
+
 @Injectable()
 export class PaymentsService {
   constructor(
@@ -35,6 +51,7 @@ export class PaymentsService {
     private readonly configService: ConfigService,
     private readonly auditLog: AuditLogService,
     private readonly midtransProvider: MidtransProvider,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async getPaymentConfig() {
@@ -251,6 +268,165 @@ export class PaymentsService {
     };
   }
 
+  private mapGatewayStatus(transactionStatus?: string): 'EXPIRE' | 'CANCEL' | 'FAILED' | 'PENDING' {
+    if (transactionStatus === 'expire') return 'EXPIRE';
+    if (transactionStatus === 'cancel') return 'CANCEL';
+    if (transactionStatus === 'deny') return 'FAILED';
+    return 'PENDING';
+  }
+
+  private async settleGatewayTransaction(
+    txRecord: {
+      id: number;
+      orderId: string;
+      portId: number;
+      targetType: string;
+      targetId: number;
+      amountIdr: unknown;
+      idempotencyKey: string;
+      createdById: number;
+    },
+    paymentType?: string,
+  ) {
+    const result = await this.prisma.$transaction(async (tx) => {
+      const paidAt = new Date();
+      await tx.paymentGatewayTransaction.update({
+        where: { id: txRecord.id },
+        data: { status: 'SETTLEMENT', paidAt },
+      });
+
+      if (txRecord.targetType === 'INVOICE') {
+        const method =
+          paymentType === 'qris' ? PaymentMethod.QRIS : PaymentMethod.VA;
+        await tx.payment.upsert({
+          where: { idempotencyKey: txRecord.idempotencyKey },
+          update: {
+            isVerified: true,
+            verifiedAt: paidAt,
+          },
+          create: {
+            invoiceId: txRecord.targetId,
+            idempotencyKey: txRecord.idempotencyKey,
+            amountIdr: Number(txRecord.amountIdr),
+            method,
+            referenceNo: txRecord.orderId,
+            paidAt,
+            isVerified: true,
+            verifiedAt: paidAt,
+          },
+        });
+        const invoice = await tx.invoice.findUnique({
+          where: { id: txRecord.targetId },
+          select: {
+            id: true,
+            portId: true,
+            visitId: true,
+            billingStage: true,
+            ssrdNumber: true,
+          },
+        });
+        const ssrdNumber =
+          invoice && !invoice.ssrdNumber
+            ? DocNumberUtil.generate('SSRD', invoice.portId)
+            : invoice?.ssrdNumber;
+        await tx.invoice.update({
+          where: { id: txRecord.targetId },
+          data: { status: InvoiceStatus.PAID, ssrdNumber },
+        });
+        if (invoice?.billingStage === BillingStage.FINAL_SKRD) {
+          await tx.shipVisit.updateMany({
+            where: { id: invoice.visitId, status: VisitStatus.BILLED },
+            data: { status: VisitStatus.SETTLED },
+          });
+        }
+      } else if (txRecord.targetType === 'ASSET_LEASE') {
+        await tx.assetLeasePayment.upsert({
+          where: { idempotencyKey: txRecord.idempotencyKey },
+          update: {},
+          create: {
+            leaseId: txRecord.targetId,
+            idempotencyKey: txRecord.idempotencyKey,
+            periodYear: paidAt.getUTCFullYear(),
+            amountIdr: Number(txRecord.amountIdr),
+            paidAt,
+          },
+        });
+      } else if (txRecord.targetType === 'UTILITY_READING') {
+        await tx.utilityMeterReading.update({
+          where: { id: txRecord.targetId },
+          data: {
+            paymentStatus: ChargePaymentStatus.PAID,
+            idempotencyKey: txRecord.idempotencyKey,
+            paidAt,
+          },
+        });
+      }
+
+      await this.auditLog.record({
+        actorId: txRecord.createdById,
+        action: 'GATEWAY_PAYMENT_SETTLED',
+        entityName: 'payment_gateway_transactions',
+        entityId: txRecord.id,
+        afterData: {
+          orderId: txRecord.orderId,
+          targetType: txRecord.targetType,
+          targetId: txRecord.targetId,
+          amountIdr: txRecord.amountIdr,
+        },
+        tx,
+      });
+
+      return { status: 'SETTLEMENT', orderId: txRecord.orderId, settled: true };
+    });
+
+    this.eventEmitter.emit(GATEWAY_PAYMENT_SETTLED_EVENT, {
+      transactionId: txRecord.id,
+      orderId: txRecord.orderId,
+      portId: txRecord.portId,
+      targetType: txRecord.targetType,
+      targetId: txRecord.targetId,
+      amountIdr: DecimalUtil.toNumber(txRecord.amountIdr as number),
+      payerUserId: txRecord.createdById,
+    } satisfies GatewayPaymentSettledEvent);
+
+    return result;
+  }
+
+  async syncOrderStatus(orderId: string, scope: ScopeFilter) {
+    const txRecord = await this.prisma.paymentGatewayTransaction.findUnique({
+      where: { orderId },
+    });
+    if (!txRecord) {
+      throw new NotFoundException(`Gateway transaction ${orderId} not found`);
+    }
+    if (scope.portId && txRecord.portId !== scope.portId) {
+      throw new ForbiddenException('Cross-port access denied');
+    }
+
+    if (txRecord.status === 'SETTLEMENT') {
+      return { status: 'SETTLEMENT', orderId: txRecord.orderId, settled: true };
+    }
+
+    const remote = await this.midtransProvider.getTransactionStatus(orderId);
+    const isSuccess =
+      remote.transaction_status === 'settlement' ||
+      (remote.transaction_status === 'capture' && remote.fraud_status !== 'challenge');
+
+    if (isSuccess) {
+      return this.settleGatewayTransaction(txRecord, remote.payment_type);
+    }
+
+    const nextStatus = this.mapGatewayStatus(remote.transaction_status);
+    if (nextStatus !== txRecord.status) {
+      await this.prisma.paymentGatewayTransaction.update({
+        where: { id: txRecord.id },
+        data: { status: nextStatus },
+      });
+    }
+
+    return { status: nextStatus, orderId: txRecord.orderId, settled: false };
+  }
+
   async handleMidtransWebhook(dto: MidtransWebhookDto) {
     const valid = this.midtransProvider.verifyWebhookSignature(
       dto.order_id,
@@ -282,14 +458,7 @@ export class PaymentsService {
       (dto.transaction_status === 'capture' && dto.fraud_status !== 'challenge');
 
     if (!isSuccess) {
-      const nextStatus =
-        dto.transaction_status === 'expire'
-          ? 'EXPIRE'
-          : dto.transaction_status === 'cancel'
-          ? 'CANCEL'
-          : dto.transaction_status === 'deny'
-          ? 'FAILED'
-          : 'PENDING';
+      const nextStatus = this.mapGatewayStatus(dto.transaction_status);
 
       await this.prisma.paymentGatewayTransaction.update({
         where: { id: txRecord.id },
@@ -298,68 +467,6 @@ export class PaymentsService {
       return { status: nextStatus, orderId: txRecord.orderId };
     }
 
-    return this.prisma.$transaction(async (tx) => {
-      const paidAt = new Date();
-      await tx.paymentGatewayTransaction.update({
-        where: { id: txRecord.id },
-        data: { status: 'SETTLEMENT', paidAt },
-      });
-
-      if (txRecord.targetType === 'INVOICE') {
-        const method =
-          dto.payment_type === 'qris' ? PaymentMethod.QRIS : PaymentMethod.VA;
-        await tx.payment.create({
-          data: {
-            invoiceId: txRecord.targetId,
-            idempotencyKey: txRecord.idempotencyKey,
-            amountIdr: txRecord.amountIdr,
-            method,
-            referenceNo: txRecord.orderId,
-            paidAt,
-            isVerified: true,
-            verifiedAt: paidAt,
-          },
-        });
-        await tx.invoice.update({
-          where: { id: txRecord.targetId },
-          data: { status: InvoiceStatus.PAID },
-        });
-      } else if (txRecord.targetType === 'ASSET_LEASE') {
-        await tx.assetLeasePayment.create({
-          data: {
-            leaseId: txRecord.targetId,
-            idempotencyKey: txRecord.idempotencyKey,
-            periodYear: paidAt.getUTCFullYear(),
-            amountIdr: txRecord.amountIdr,
-            paidAt,
-          },
-        });
-      } else if (txRecord.targetType === 'UTILITY_READING') {
-        await tx.utilityMeterReading.update({
-          where: { id: txRecord.targetId },
-          data: {
-            paymentStatus: ChargePaymentStatus.PAID,
-            idempotencyKey: txRecord.idempotencyKey,
-            paidAt,
-          },
-        });
-      }
-
-      await this.auditLog.record({
-        actorId: txRecord.createdById,
-        action: 'GATEWAY_PAYMENT_SETTLED',
-        entityName: 'payment_gateway_transactions',
-        entityId: txRecord.id,
-        afterData: {
-          orderId: txRecord.orderId,
-          targetType: txRecord.targetType,
-          targetId: txRecord.targetId,
-          amountIdr: txRecord.amountIdr,
-        },
-        tx,
-      });
-
-      return { status: 'SETTLEMENT', orderId: txRecord.orderId };
-    });
+    return this.settleGatewayTransaction(txRecord, dto.payment_type);
   }
 }

@@ -28,6 +28,10 @@ import {
   BerthingContractEvent,
 } from '../vessels/vessels.service';
 import { WARNING_ISSUED_EVENT, WarningIssuedEvent } from '../warnings/warnings.service';
+import {
+  GATEWAY_PAYMENT_SETTLED_EVENT,
+  GatewayPaymentSettledEvent,
+} from '../payments/payments.service';
 
 export interface CreateSmartNotificationParams {
   userId: number;
@@ -525,6 +529,55 @@ export class NotificationsService {
         resourceId: event.warningId,
         dedupKey: `WARNING_${event.warningId}_USER_${u.id}`,
         linkUrl: `/operator/warnings/${event.warningId}`,
+      });
+    }
+  }
+
+  @OnEvent(GATEWAY_PAYMENT_SETTLED_EVENT)
+  async handleGatewayPaymentSettled(
+    event: GatewayPaymentSettledEvent,
+  ): Promise<void> {
+    const formattedAmount = `Rp ${Math.round(event.amountIdr).toLocaleString('id-ID')}`;
+    const payerLink =
+      event.targetType === 'INVOICE' ? '/kapal/penagihan' : '/tenant/tagihan';
+
+    await this.dispatchNotification({
+      userId: event.payerUserId,
+      portId: event.portId,
+      title: `Pembayaran Online Berhasil (${event.orderId})`,
+      message: `Pembayaran ${formattedAmount} melalui Midtrans telah terverifikasi lunas dan e-SSRD resmi diterbitkan.`,
+      type: 'PAYMENT_SETTLED',
+      category: 'BILLING',
+      priority: NotificationPriority.INFORMATIONAL,
+      resourceType: 'payment_gateway_transactions',
+      resourceId: event.transactionId,
+      dedupKey: `GW_SETTLED_${event.transactionId}_PAYER_${event.payerUserId}`,
+      linkUrl: payerLink,
+    });
+
+    const financeOfficers = await this.prisma.user.findMany({
+      where: {
+        isActive: true,
+        portId: event.portId,
+        role: { in: [UserRole.BENDAHARA, UserRole.PETUGAS_TAGIHAN] },
+      },
+      select: { id: true },
+    });
+
+    for (const officer of financeOfficers) {
+      if (officer.id === event.payerUserId) continue;
+      await this.dispatchNotification({
+        userId: officer.id,
+        portId: event.portId,
+        title: `Pembayaran Midtrans Terverifikasi (${event.orderId})`,
+        message: `Penerimaan retribusi sebesar ${formattedAmount} (${event.targetType} #${event.targetId}) telah otomatis lunas dan disahkan oleh Midtrans.`,
+        type: 'PAYMENT_SETTLED',
+        category: 'BILLING',
+        priority: NotificationPriority.INFORMATIONAL,
+        resourceType: 'payment_gateway_transactions',
+        resourceId: event.transactionId,
+        dedupKey: `GW_SETTLED_${event.transactionId}_OFFICER_${officer.id}`,
+        linkUrl: '/bendahara/verifikasi',
       });
     }
   }
