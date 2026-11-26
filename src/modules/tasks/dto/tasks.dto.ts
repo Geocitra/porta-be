@@ -283,3 +283,21 @@ export class HeadVerifyTaskDto {
   @IsString()
   notes?: string;
 }
+
+export class UploadTaskAttachmentDto {
+  @ApiPropertyOptional({ example: 'Foto bukti dokumen sudah ditandatangani' })
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @ApiPropertyOptional({ example: 12 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  checklistItemId?: number;
+
+  @ApiPropertyOptional({ example: 'VESSEL_CERTIFICATE_UPLOAD' })
+  @IsOptional()
+  @IsString()
+  checklistItemCode?: string;
+}

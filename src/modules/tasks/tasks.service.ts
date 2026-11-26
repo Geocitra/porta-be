@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -39,6 +40,7 @@ import {
   UpdateAdminTaskChecklistDto,
   UpdateOfficerTaskChecklistDto,
 } from './dto/tasks.dto';
+import { TaskSourceContextHydrator } from './helpers/task-source-hydrator';
 import { evaluateTaskStateTransition } from './task-state-machine';
 
 export const TASK_WORKFLOW_EVENT = 'task.workflow_transition';
@@ -426,6 +428,7 @@ export class TasksService {
     private readonly storage: StorageService,
     private readonly assignmentsService: AssignmentsService,
     private readonly eventEmitter: EventEmitter2,
+    @Optional() private readonly sourceHydrator?: TaskSourceContextHydrator,
   ) { }
 
   /**
@@ -676,7 +679,13 @@ export class TasksService {
       });
     }
 
-    return task;
+    const sourceContext = this.sourceHydrator
+      ? await this.sourceHydrator.hydrate(task)
+      : null;
+    return {
+      ...task,
+      sourceContext,
+    };
   }
 
   /**
@@ -1169,7 +1178,10 @@ export class TasksService {
   async uploadTaskAttachment(
     taskId: number,
     file: UploadedFilePayload,
-    notes: string | undefined,
+    notesOrOptions:
+      | string
+      | { notes?: string; checklistItemId?: number; checklistItemCode?: string }
+      | undefined,
     actor: AuthenticatedUser,
     scope: ScopeFilter,
   ) {
@@ -1185,19 +1197,49 @@ export class TasksService {
       });
     }
 
+    const opts =
+      typeof notesOrOptions === 'string'
+        ? { notes: notesOrOptions }
+        : (notesOrOptions ?? {});
+
+    let targetChecklistItemId: number | null = null;
+    if (opts.checklistItemId || opts.checklistItemCode) {
+      const targetItem = await this.prisma.taskChecklistItem.findFirst({
+        where: {
+          taskId,
+          ...(opts.checklistItemId ? { id: opts.checklistItemId } : {}),
+          ...(opts.checklistItemCode ? { code: opts.checklistItemCode } : {}),
+        },
+      });
+      if (!targetItem) {
+        throw new BadRequestException(
+          'Item checklist tujuan tidak ditemukan pada tugas ini',
+        );
+      }
+      targetChecklistItemId = targetItem.id;
+    }
+
     const filePath = await this.storage.saveFile(`tasks/${taskId}`, file);
 
     return this.prisma.$transaction(async (tx) => {
       const attachment = await tx.taskAttachment.create({
         data: {
           taskId,
+          checklistItemId: targetChecklistItemId,
           fileName: file.originalname,
           filePath,
           mimeType: file.mimetype,
           uploadedById: actor.id,
-          notes,
+          notes: opts.notes,
         },
       });
+
+      if (targetChecklistItemId) {
+        await tx.taskChecklistItem.update({
+          where: { id: targetChecklistItemId },
+          data: { attachmentPath: filePath },
+        });
+      }
 
       await this.auditLog.record({
         actorId: actor.id,
@@ -1258,9 +1300,15 @@ export class TasksService {
         where: { taskId },
         orderBy: { itemOrder: 'asc' },
       });
-      const currentAttachmentsCount = await tx.taskAttachment.count({
+      const currentAttachments = await tx.taskAttachment.findMany({
         where: { taskId },
+        select: { id: true, checklistItemId: true },
       });
+      const boundChecklistIds = new Set(
+        currentAttachments
+          .map((a) => a.checklistItemId)
+          .filter((id): id is number => id !== null),
+      );
 
       const incompleteMandatory = currentChecklists.filter(
         (c) => c.isApplicable && c.isRequired && !c.checkedByOfficer,
@@ -1276,7 +1324,7 @@ export class TasksService {
           c.isApplicable &&
           c.requiresAttachment &&
           !c.attachmentPath &&
-          currentAttachmentsCount === 0,
+          !boundChecklistIds.has(c.id),
       );
       if (missingAttachmentItems.length > 0) {
         throw new BadRequestException(
@@ -1945,6 +1993,187 @@ export class TasksService {
       recentVisits: visits,
       dailyReports,
       maintenanceTickets,
+    };
+  }
+
+  async getHeadBottlenecks(
+    scope: ScopeFilter,
+    filters?: { stage?: string; role?: string },
+  ) {
+    if (!scope.portId) {
+      throw new ForbiddenException(
+        'Kepala Pelabuhan wajib terikat pada satu ekosistem pelabuhan',
+      );
+    }
+    const portId = scope.portId;
+    await this.syncOverdueTasks(portId);
+
+    const activeTasks = await this.prisma.task.findMany({
+      where: {
+        portId,
+        executionStatus: {
+          notIn: [TaskExecutionStatus.COMPLETED, TaskExecutionStatus.CANCELLED],
+        },
+        reviewStatus: {
+          notIn: [TaskReviewStatus.HEAD_VERIFIED, TaskReviewStatus.HEAD_REJECTED],
+        },
+      },
+      include: {
+        assignee: { select: { id: true, fullName: true, role: true } },
+        checklistItems: { orderBy: { itemOrder: 'asc' } },
+        attachments: { select: { id: true, checklistItemId: true } },
+        reviews: {
+          orderBy: { createdAt: 'desc' },
+          take: 5,
+          select: { decision: true, reason: true, createdAt: true },
+        },
+      },
+      orderBy: [{ isOverdue: 'desc' }, { priority: 'desc' }, { dueDate: 'asc' }],
+    });
+
+    const nowMs = Date.now();
+    const items = activeTasks
+      .map((t) => {
+        let stage:
+          | 'STUCK_AT_OFFICER'
+          | 'RETURNED_LOOP'
+          | 'STUCK_AT_ADMIN_CHECKER'
+          | 'WAITING_HEAD' = 'STUCK_AT_OFFICER';
+
+        if (
+          t.reviewStatus === TaskReviewStatus.ADMIN_RETURNED ||
+          t.reviewStatus === TaskReviewStatus.HEAD_RETURNED
+        ) {
+          stage = 'RETURNED_LOOP';
+        } else if (
+          t.reviewStatus === TaskReviewStatus.WAITING_ADMIN ||
+          t.reviewStatus === TaskReviewStatus.ADMIN_REVIEW
+        ) {
+          stage = 'STUCK_AT_ADMIN_CHECKER';
+        } else if (
+          t.reviewStatus === TaskReviewStatus.WAITING_HEAD_VERIFICATION ||
+          t.reviewStatus === TaskReviewStatus.ADMIN_APPROVED
+        ) {
+          stage = 'WAITING_HEAD';
+        }
+
+        const preferredRoles = this.getPreferredRolesForTask({
+          taskType: t.taskType,
+          sourceType: t.sourceType,
+        });
+
+        const currentHolder =
+          stage === 'STUCK_AT_ADMIN_CHECKER'
+            ? {
+                id: null as number | null,
+                fullName: 'Admin Pelabuhan (Checker)',
+                role: UserRole.ADMIN_PELABUHAN as string,
+              }
+            : stage === 'WAITING_HEAD'
+              ? {
+                  id: null as number | null,
+                  fullName: 'Kepala Pelabuhan',
+                  role: UserRole.KEPALA_PELABUHAN as string,
+                }
+              : t.assignee
+                ? {
+                    id: t.assignee.id,
+                    fullName: t.assignee.fullName,
+                    role: t.assignee.role as string,
+                  }
+                : {
+                    id: null as number | null,
+                    fullName: 'Belum diambil petugas',
+                    role: (preferredRoles[0] ?? UserRole.PETUGAS_PELABUHAN) as string,
+                  };
+
+        const boundIds = new Set(
+          t.attachments
+            .map((a) => a.checklistItemId)
+            .filter((id): id is number => id !== null),
+        );
+
+        const missingChecklistItems = t.checklistItems
+          .filter((c) => {
+            if (!c.isApplicable) return false;
+            const missingAttachment =
+              c.requiresAttachment && !c.attachmentPath && !boundIds.has(c.id);
+            if (stage === 'STUCK_AT_ADMIN_CHECKER') {
+              return (c.isRequired && !c.checkedByAdmin) || missingAttachment;
+            }
+            return (c.isRequired && !c.checkedByOfficer) || missingAttachment;
+          })
+          .map((c) => ({
+            code: c.code,
+            label: c.label,
+            requiresAttachment: c.requiresAttachment,
+            missingAttachment:
+              c.requiresAttachment && !c.attachmentPath && !boundIds.has(c.id),
+            checkedByOfficer: c.checkedByOfficer,
+            checkedByAdmin: c.checkedByAdmin,
+          }));
+
+        const refDate =
+          stage === 'STUCK_AT_ADMIN_CHECKER' && t.submittedAt
+            ? t.submittedAt
+            : stage === 'WAITING_HEAD' && t.adminReviewedAt
+              ? t.adminReviewedAt
+              : t.updatedAt;
+        const agingHours = Math.max(
+          0,
+          Math.round(((nowMs - refDate.getTime()) / (1000 * 60 * 60)) * 10) / 10,
+        );
+
+        const returnReviews = t.reviews.filter((r) =>
+          r.decision.includes('RETURN'),
+        );
+
+        return {
+          taskId: t.id,
+          taskNumber: t.taskNumber,
+          title: t.title,
+          taskType: t.taskType,
+          sourceType: t.sourceType,
+          priority: t.priority,
+          executionStatus: t.executionStatus,
+          reviewStatus: t.reviewStatus,
+          stage,
+          isOverdue: t.isOverdue,
+          hasIssue: t.hasIssue,
+          issueNotes: t.issueNotes,
+          agingHours,
+          dueDate: t.dueDate,
+          currentHolder,
+          missingChecklistItems,
+          lastReturnReason:
+            t.rejectionReason ?? returnReviews[0]?.reason ?? null,
+          returnCount: returnReviews.length,
+        };
+      })
+      .filter((item) => {
+        if (filters?.stage && item.stage !== filters.stage) return false;
+        if (filters?.role && item.currentHolder.role !== filters.role) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        if (a.isOverdue !== b.isOverdue) return a.isOverdue ? -1 : 1;
+        if (a.hasIssue !== b.hasIssue) return a.hasIssue ? -1 : 1;
+        return b.agingHours - a.agingHours;
+      });
+
+    return {
+      summary: {
+        totalActive: items.length,
+        stuckAtOfficer: items.filter((i) => i.stage === 'STUCK_AT_OFFICER')
+          .length,
+        returnedLoop: items.filter((i) => i.stage === 'RETURNED_LOOP').length,
+        stuckAtAdminChecker: items.filter(
+          (i) => i.stage === 'STUCK_AT_ADMIN_CHECKER',
+        ).length,
+        waitingHead: items.filter((i) => i.stage === 'WAITING_HEAD').length,
+        overdueCount: items.filter((i) => i.isOverdue).length,
+      },
+      items,
     };
   }
 

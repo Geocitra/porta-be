@@ -81,7 +81,7 @@ export class OperatorsController {
   }
 
   @Post('contracts/:contractId/upload-signed')
-  @Roles(UserRole.OPERATOR_KAPAL, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.OPERATOR_KAPAL, UserRole.PETUGAS_REGISTRASI_KONTRAK)
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   uploadSignedContract(
@@ -464,7 +464,7 @@ export class VesselsController {
   }
 
   @Post('contracts/:contractId/upload-signed')
-  @Roles(UserRole.OPERATOR_KAPAL, UserRole.ADMIN_PELABUHAN)
+  @Roles(UserRole.OPERATOR_KAPAL, UserRole.PETUGAS_REGISTRASI_KONTRAK)
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(FileInterceptor('file'))
   uploadSignedContractAlias(

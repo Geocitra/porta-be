@@ -245,6 +245,7 @@ export class DailyReportsService {
           id: officer.id,
           fullName: officer.fullName,
           email: officer.email,
+          role: officer.role,
           portId: officer.portId,
           port: officer.port,
           activeAssignments: officer.assignments,
@@ -318,13 +319,108 @@ export class DailyReportsService {
       unassignedCount: unassignedTasks.length,
     };
 
+    const domainBreakdown = this.buildDomainBreakdown(tasks);
+
     return {
       portId: effectivePortId ?? 'ALL',
       date: query?.date ?? 'ALL_DATES',
       portTotals,
+      domainBreakdown,
       officerRecaps,
       unassignedTasks,
     };
+  }
+
+  private buildDomainBreakdown(
+    tasks: Array<{
+      taskType: TaskType;
+      executionStatus: TaskExecutionStatus;
+      reviewStatus: TaskReviewStatus;
+      isOverdue: boolean;
+      hasIssue: boolean;
+    }>,
+  ) {
+    const domains: Array<{
+      domainCode: string;
+      domainLabel: string;
+      taskTypes: TaskType[];
+    }> = [
+      {
+        domainCode: 'REGISTRATION_CONTRACT',
+        domainLabel: 'Registrasi, Legalitas & Kontrak',
+        taskTypes: [
+          TaskType.COMPANY_REGISTRATION_CHECK,
+          TaskType.DOCUMENT_VERIFICATION,
+        ],
+      },
+      {
+        domainCode: 'CARGO_BERTH',
+        domainLabel: 'Operasional Dermaga & Barang',
+        taskTypes: [
+          TaskType.CARGO_HANDLING_CHECK,
+          TaskType.BERTHING_INSPECTION,
+          TaskType.VESSEL_ARRIVAL_CHECK,
+          TaskType.VESSEL_DEPARTURE_CLEARANCE,
+        ],
+      },
+      {
+        domainCode: 'PASSENGER_BERTH',
+        domainLabel: 'Dermaga Penumpang & Manifes',
+        taskTypes: [TaskType.PASSENGER_SERVICE, TaskType.MANIFEST_CHECK],
+      },
+      {
+        domainCode: 'ASSET_MAINTENANCE',
+        domainLabel: 'Ruangan, Aset & Pemeliharaan',
+        taskTypes: [
+          TaskType.ASSET_MANAGEMENT_CHECK,
+          TaskType.FACILITY_INSPECTION,
+          TaskType.MAINTENANCE_HANDLING,
+          TaskType.SAFETY_INSPECTION,
+        ],
+      },
+      {
+        domainCode: 'BILLING_TREASURY',
+        domainLabel: 'Tagihan, Retribusi & Bendahara',
+        taskTypes: [TaskType.RETRIBUTION_COLLECTION],
+      },
+      {
+        domainCode: 'GENERAL',
+        domainLabel: 'Operasional Umum',
+        taskTypes: [TaskType.GENERAL_OPERATION],
+      },
+    ];
+
+    return domains.map((d) => {
+      const domainTasks = tasks.filter((t) => d.taskTypes.includes(t.taskType));
+      return {
+        domainCode: d.domainCode,
+        domainLabel: d.domainLabel,
+        total: domainTasks.length,
+        notStarted: domainTasks.filter(
+          (t) => t.executionStatus === TaskExecutionStatus.NOT_STARTED,
+        ).length,
+        inProgress: domainTasks.filter(
+          (t) => t.executionStatus === TaskExecutionStatus.IN_PROGRESS,
+        ).length,
+        submitted: domainTasks.filter(
+          (t) =>
+            t.executionStatus === TaskExecutionStatus.SUBMITTED ||
+            t.executionStatus === TaskExecutionStatus.COMPLETED,
+        ).length,
+        returned: domainTasks.filter(
+          (t) =>
+            t.reviewStatus === TaskReviewStatus.ADMIN_RETURNED ||
+            t.reviewStatus === TaskReviewStatus.HEAD_RETURNED,
+        ).length,
+        headVerified: domainTasks.filter(
+          (t) => t.reviewStatus === TaskReviewStatus.HEAD_VERIFIED,
+        ).length,
+        overdue: domainTasks.filter(
+          (t) => t.isOverdue && t.executionStatus !== TaskExecutionStatus.COMPLETED,
+        ).length,
+        withIssues: domainTasks.filter((t) => t.hasIssue).length,
+      };
+    });
   }
 
   findAll(scope: ScopeFilter) {
@@ -401,6 +497,7 @@ export class DailyReportsService {
           status: DailyReportStatus.SUBMITTED,
           reviewStatus: DailyReportReviewStatus.WAITING_ADMIN,
           summarySnapshot: obligationRecap.portTotals as unknown as Prisma.InputJsonValue,
+          domainSummaryJson: obligationRecap.domainBreakdown as unknown as Prisma.InputJsonValue,
           items: {
             create: items.map((item) => ({
               portId: dto.portId,

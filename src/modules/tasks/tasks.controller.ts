@@ -40,6 +40,7 @@ import {
   SubmitTaskDto,
   UpdateAdminTaskChecklistDto,
   UpdateOfficerTaskChecklistDto,
+  UploadTaskAttachmentDto,
 } from './dto/tasks.dto';
 import { TasksService } from './tasks.service';
 
@@ -189,11 +190,11 @@ export class TasksController {
   uploadAttachment(
     @Param('id', ParseIntPipe) id: number,
     @UploadedFile() file: Express.Multer.File,
-    @Body('notes') notes: string | undefined,
+    @Body() dto: UploadTaskAttachmentDto,
     @CurrentUser() actor: AuthenticatedUser,
     @Req() req: { portScope: ScopeFilter },
   ) {
-    return this.tasksService.uploadTaskAttachment(id, file, notes, actor, req.portScope);
+    return this.tasksService.uploadTaskAttachment(id, file, dto, actor, req.portScope);
   }
 
   @Post(':id/submit')
@@ -307,6 +308,18 @@ export class TaskReviewsController {
   @Roles(UserRole.KEPALA_PELABUHAN)
   getHeadPortStatus(@Req() req: { portScope: ScopeFilter }) {
     return this.tasksService.getHeadPortOperationalStatus(req.portScope);
+  }
+
+  @Get('head/bottlenecks')
+  @Roles(UserRole.KEPALA_PELABUHAN, UserRole.SUPERADMIN)
+  @ApiQuery({ name: 'stage', required: false })
+  @ApiQuery({ name: 'role', required: false })
+  getHeadBottlenecks(
+    @Req() req: { portScope: ScopeFilter },
+    @Query('stage') stage?: string,
+    @Query('role') role?: string,
+  ) {
+    return this.tasksService.getHeadBottlenecks(req.portScope, { stage, role });
   }
 
   @Post('head/:taskId/verify')
