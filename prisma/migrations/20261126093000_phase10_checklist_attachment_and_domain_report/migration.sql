@@ -1,4 +1,4 @@
-﻿-- AlterTable
+-- AlterTable
 ALTER TABLE "daily_port_reports" ADD COLUMN     "domain_summary_json" JSONB;
 
 -- AlterTable

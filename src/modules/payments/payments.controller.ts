@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -52,6 +52,24 @@ export class PaymentsController {
     @Req() req: { portScope: ScopeFilter },
   ) {
     return this.paymentsService.checkout(dto, actor, req.portScope);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard, PortScopeGuard)
+  @Roles(
+    UserRole.OPERATOR_KAPAL,
+    UserRole.TENANT,
+    UserRole.ADMIN_PELABUHAN,
+    UserRole.PETUGAS_TAGIHAN,
+    UserRole.BENDAHARA,
+    UserRole.SUPERADMIN,
+  )
+  @Post('sync/:orderId')
+  syncOrderStatus(
+    @Param('orderId') orderId: string,
+    @Req() req: { portScope: ScopeFilter },
+  ) {
+    return this.paymentsService.syncOrderStatus(orderId, req.portScope);
   }
 
   @Post('webhooks/midtrans')

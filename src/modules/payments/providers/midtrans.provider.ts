@@ -86,19 +86,72 @@ export class MidtransProvider implements PaymentProviderAdapter {
     };
   }
 
+  private getApiBaseUrl(): string {
+    const isProd = this.configService.get<string>('MIDTRANS_IS_PRODUCTION') === 'true';
+    return isProd ? 'https://api.midtrans.com' : 'https://api.sandbox.midtrans.com';
+  }
+
+  async getTransactionStatus(orderId: string): Promise<{
+    status_code?: string;
+    transaction_status?: string;
+    fraud_status?: string;
+    payment_type?: string;
+    gross_amount?: string;
+  }> {
+    const serverKey = this.configService.get<string>('MIDTRANS_SERVER_KEY');
+    if (!serverKey || serverKey === 'mock' || serverKey === 'sandbox' || serverKey === 'mock-sandbox-server-key') {
+      return { status_code: '200', transaction_status: 'pending' };
+    }
+
+    const authHeader = Buffer.from(`${serverKey}:`).toString('base64');
+    const response = await fetch(
+      `${this.getApiBaseUrl()}/v2/${encodeURIComponent(orderId)}/status`,
+      {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Basic ${authHeader}`,
+        },
+      },
+    );
+
+    const data = (await response.json()) as {
+      status_code?: string;
+      status_message?: string;
+      transaction_status?: string;
+      fraud_status?: string;
+      payment_type?: string;
+      gross_amount?: string;
+    };
+
+    if (!response.ok && data.status_code !== '404') {
+      throw new ServiceUnavailableException(
+        data.status_message || 'Failed to query Midtrans transaction status',
+      );
+    }
+
+    return data;
+  }
+
   verifyWebhookSignature(
     orderId: string,
     statusCode: string,
     grossAmount: string,
     incomingSignature: string,
   ): boolean {
-    const serverKey = this.getServerKey();
-    const expected = crypto
-      .createHash('sha512')
-      .update(`${orderId}${statusCode}${grossAmount}${serverKey}`)
-      .digest('hex');
+    const candidateKeys = [
+      this.getServerKey(),
+      this.configService.get<string>('MIDTRANS_SIGNATURE_KEY')?.trim(),
+    ].filter((key): key is string => Boolean(key));
 
-    if (incomingSignature.length !== expected.length) return false;
-    return crypto.timingSafeEqual(Buffer.from(incomingSignature), Buffer.from(expected));
+    return candidateKeys.some((key) => {
+      const expected = crypto
+        .createHash('sha512')
+        .update(`${orderId}${statusCode}${grossAmount}${key}`)
+        .digest('hex');
+
+      if (incomingSignature.length !== expected.length) return false;
+      return crypto.timingSafeEqual(Buffer.from(incomingSignature), Buffer.from(expected));
+    });
   }
 }
